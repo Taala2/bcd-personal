@@ -16,8 +16,9 @@ concurrency:
 
 jobs:
   build:
-    # madeira-bcd: runs only in the owner's repository; a fork's run is skipped.
-    if: github.repository == 'thebcd69/madeira-bcd'
+    # madeira-bcd: runs in the owner's repository and in one named diagnostic fork (it has no OTA secrets and keeps the two
+    # unsigned IPAs as a workflow artifact instead, see the steps after "Package ..." below); every other repository is skipped.
+    if: github.repository == 'thebcd69/madeira-bcd' || github.repository == 'Taala2/bcd-personal'
     runs-on: macos-15
     # contents: write only so the token can see DRAFT releases, which is where
     # the Metal Shader Converter installer is kept (drafts are not public).
@@ -3478,12 +3479,39 @@ jobs:
       - name: Package Madeira and Madeira2 unsigned IPAs
         run: python3 tools/ota-variants.py package build-out/Madeira.xcarchive/Products/Applications/Madeira.app build-out ${{ steps.bn.outputs.n }}
 
+      # A fork build (only Taala2/bcd-personal): no OTA signing or private bucket, so both unsigned IPAs are kept as one workflow
+      # artifact for 3 days. The check comes first so that a missing or broken second IPA fails the build instead of uploading one.
+      - name: Verify both unsigned IPAs (fork build)
+        if: github.repository == 'Taala2/bcd-personal'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in Madeira Madeira2; do
+            f="build-out/${name}-0.1.${{ steps.bn.outputs.n }}-unsigned.ipa"
+            test -s "$f" || { echo "::error::$f is missing or empty"; exit 1; }
+            unzip -tq "$f"
+            ls -l "$f"
+          done
+
+      - name: Keep both unsigned IPAs as a workflow artifact (fork build)
+        if: github.repository == 'Taala2/bcd-personal'
+        uses: actions/upload-artifact@v4
+        with:
+          name: madeira-unsigned-ipas-0.1.${{ steps.bn.outputs.n }}
+          path: |
+            build-out/Madeira-0.1.${{ steps.bn.outputs.n }}-unsigned.ipa
+            build-out/Madeira2-0.1.${{ steps.bn.outputs.n }}-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
       # Over-the-air install: sign with the owner's certificate (kept in the
       # owner's PRIVATE bucket, never in the repository) and put both signed IPAs
       # plus installation pages (7-day pre-signed links) in the same bucket.
       # A signing/upload failure is caught by the private-bucket gate below.
       - name: Sign for OTA install (private bucket)
         id: ota
+        if: github.repository == 'thebcd69/madeira-bcd'
         continue-on-error: true
         env:
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
@@ -3506,7 +3534,7 @@ jobs:
       # private R2 bucket (the OTA step above). If that step did not succeed,
       # the build fails here instead of keeping the IPA somewhere public.
       - name: Check the IPA reached the private bucket
-        if: steps.ota.outcome != 'success'
+        if: github.repository == 'thebcd69/madeira-bcd' && steps.ota.outcome != 'success'
         run: |
           echo "::error::OTA signing/upload did not succeed: this build's IPA was not kept anywhere (no GitHub artifact by design)"
           exit 1

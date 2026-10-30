@@ -190,6 +190,10 @@ else
         echo "    Fix the error above, or set MADEIRA_ALLOW_NO_D3D12=1 to build without D3D12." >&2
         exit 1
     fi
+    # MADEIRA_ALLOW_NO_D3D12=1: the objects above would have defined madeira_ir_convert
+    # (winemetal_unix.c's dispatch table) and madeira_d3d12_canary_run[_log] (ContentView), so
+    # link their stand-in instead; every D3D12 pipeline then fails with MADEIRA_IR_NO_DYLIB.
+    compile_c "$REPO_ROOT/build/madeira-d3d12/madeira_ir_stub.c" madeira_ir_stub
 fi
 
 echo "=== winemetal unix (Objective-C) ==="

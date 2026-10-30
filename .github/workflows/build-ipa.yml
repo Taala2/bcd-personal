@@ -1639,17 +1639,31 @@ jobs:
       # (Apple's agreement, app/Madeira/d3d12/NOTICE.txt); build/madeira-d3d12/deps.sh
       # checks both against their pinned hashes. A missing or mismatched converter
       # would build the stub that draws nothing in any D3D12 game, so fail instead.
+      # Test fork only (Taala2/bcd-personal): an ABSENT iOS library is tolerated when the vendored headers pass
+      # their SHA256SUMS; a library that is present but does not match its pinned hash, or headers that do not match,
+      # still fail. Any other repository keeps the strict check.
       - name: Locate Metal Shader Converter headers
         shell: bash
+        env:
+          MADEIRA_ALLOW_NO_D3D12: ${{ github.repository == 'Taala2/bcd-personal' && '1' || '0' }}
         run: |
           INC="$GITHUB_WORKSPACE/madeira-d3d12/third_party/metal-shader-converter/include"
           if ! bash -c 'source build/madeira-d3d12/deps.sh'; then
-            echo "::error::the vendored Metal Shader Converter does not match its pinned hashes (build/madeira-d3d12/deps.sh)"
-            exit 1
+            if [ "$MADEIRA_ALLOW_NO_D3D12" = 1 ] && [ ! -e app/Madeira/d3d12/libmetalirconverter.dylib ] \
+               && (cd madeira-d3d12/third_party/metal-shader-converter && shasum -a 256 -c --quiet SHA256SUMS); then
+              echo "::warning::no libmetalirconverter.dylib: this build has NO D3D12 (MADEIRA_ALLOW_NO_D3D12=1); the vendored headers passed their checksums"
+            else
+              echo "::error::the vendored Metal Shader Converter does not match its pinned hashes (build/madeira-d3d12/deps.sh)"
+              exit 1
+            fi
           fi
           echo "MADEIRA_MSC_INCLUDE=$INC" >> "$GITHUB_ENV"
           V=$(grep -E "define IR_VERSION_(MAJOR|MINOR|PATCH)" "$INC/metal_irconverter/ir_version.h" | awk '{print $3}' | paste -sd. -)
-          echo "::notice::Metal Shader Converter $V from the repository: headers vendored, iOS library tracked"
+          if [ -e app/Madeira/d3d12/libmetalirconverter.dylib ]; then
+            echo "::notice::Metal Shader Converter $V from the repository: headers vendored, iOS library present and checked against its pinned SHA-256 and the headers' SHA256SUMS"
+          else
+            echo "::warning::Metal Shader Converter $V: vendored headers only, NO iOS library -- this build runs WITHOUT D3D12 (Direct3D 12 games will fail; this switch does not touch the D3D9/10/11 build)"
+          fi
 
       # Upstream's Madeira Dock (Steam library helper): dockhost.exe is a build
       # output; without it the Dock stays hidden, so a failure here only warns.
@@ -2140,6 +2154,8 @@ jobs:
 
       - name: Build dxmt-ios
         shell: bash
+        env:
+          MADEIRA_ALLOW_NO_D3D12: ${{ github.repository == 'Taala2/bcd-personal' && '1' || '0' }}
         run: |
           set +e
           bash build/dxmt-ios/build.sh

@@ -164,6 +164,9 @@ jobs:
       # is deleted, automatic sending is opt-in and Wi-Fi only.
       - name: Check Send logs to BCD
         run: python3 tests/host/check-log-upload.py --require-swift
+        # Not in Taala2/bcd-personal: the check reads bcd-logs/worker/* and tools/pull-logs.py, which tools/export-public.py keeps out of
+        # the public tree (bcd-games), so the diagnostic repository, which starts from it, does not have them. madeira-bcd still runs it.
+        if: github.repository != 'Taala2/bcd-personal'
 
       # The performance trace (round 604; BCDPerfTrace*.swift): one line a second, an hour at most, the newest 20 kept, sent after a log's
       # last line when the player turned it on (or a guided debug run did), nothing at all while it is off, and tools/log-facts.py reading it.

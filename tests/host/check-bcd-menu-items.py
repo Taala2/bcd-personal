@@ -225,7 +225,7 @@ if not (wine_src / "dlls").is_dir():
     wine_src = Path.home() / "madeira-bcd/wine"
 have_wine = (wine_src / "dlls").is_dir() and (wine_src / "build-macos/include/config.h").exists()
 if not swift:
-    check("xcrun swiftc is here for the Swift parts", not args.require_swift)
+    check(not args.require_swift, "xcrun swiftc is here for the Swift parts")
 else:
     with tempfile.TemporaryDirectory() as tmp:
         t = Path(tmp)
@@ -251,7 +251,7 @@ else:
 # ---- 6. the gate in C ---------------------------------------------------------------------------------------------------------------------------------
 clang = shutil.which("clang")
 if not clang:
-    check("clang is here for the gate test", not args.require_swift)
+    check(not args.require_swift, "clang is here for the gate test")
 else:
     for san in ("address,undefined", "thread"):
         with tempfile.TemporaryDirectory() as tmp:
@@ -296,7 +296,7 @@ if swift:
         errors = [l for l in r.stderr.splitlines() if "error:" in l or "implicit declaration" in l]
         check(not errors, "driver_ios.c (the window driver) compiles with the build's flags, no implicit declaration", "\n".join(errors[:5]))
     else:
-        check("the Wine tree (WINE_SRC or ~/madeira-bcd/wine, built) was there for the two Wine-side files", not args.require_wine)
+        check(not args.require_wine, "the Wine tree (WINE_SRC or ~/madeira-bcd/wine, built) was there for the two Wine-side files")
     if not args.skip_preview:
         with tempfile.TemporaryDirectory() as tmp:
             r = subprocess.run([sys.executable, str(R / "tools/ui-preview.py"), "--build-only", "--out", tmp], capture_output=True, text=True, timeout=1500)

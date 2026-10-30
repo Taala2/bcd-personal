@@ -1,0 +1,11 @@
+name: Actions Registration Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Confirm registration
+        run: echo "GitHub Actions registration works"

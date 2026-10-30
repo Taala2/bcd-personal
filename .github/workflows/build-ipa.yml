@@ -172,12 +172,16 @@ jobs:
       # last line when the player turned it on (or a guided debug run did), nothing at all while it is off, and tools/log-facts.py reading it.
       - name: Check the performance trace
         run: python3 tests/host/check-bcd-perftrace.py --require-swift
+        # Not in Taala2/bcd-personal: reads tools/log-facts.py, which tools/export-public.py keeps out of the public tree.
+        if: github.repository != 'Taala2/bcd-personal'
 
       # Help with a game (round 604; BCDHelpCore/BCDGameHelp/BCDReadinessCore.swift and their live sides): the guided debug run (nothing sent unless the
       # player taps Send, the trace and the detailed log asked for by the session only), game feedback through the existing Feedback intake, and the
       # launch check (a note on the game's page, from the import tables of its program files), with tools/pull-logs.py reading the feedback.
       - name: Check help with a game
         run: python3 tests/host/check-bcd-help.py --require-swift
+        # Not in Taala2/bcd-personal: reads bcd-logs/worker/worker.js and tools/pull-logs.py, which tools/export-public.py keeps out of the public tree.
+        if: github.repository != 'Taala2/bcd-personal'
 
       # Shareable control layouts (round 604; BCDControlShare*.swift): a custom layout as a small JSON file, a file added as a new layout after the
       # envelope and every control are checked (size, ranges, nesting, fresh ids, a name that replaces nothing).
@@ -196,6 +200,8 @@ jobs:
       # the scanner behind the replay.
       - name: Check the session summary and the question after an unexpected close
         run: python3 tests/host/check-bcd-session-record.py --require-swift
+        # Not in Taala2/bcd-personal: reads tools/log-facts.py, which tools/export-public.py keeps out of the public tree.
+        if: github.repository != 'Taala2/bcd-personal'
 
       # Screenshots from the in-game menu and Send Log (BCDScreenshotLive.swift, LogUpload.swift, the intake's POST /v1/shots,
       # tools/pull-logs.py): the game's own surface only, a memory guard, Photos add-only, the picture sent as it is and only when
@@ -203,6 +209,8 @@ jobs:
       # the intake's 160 KB limit, and the pull tool saving it beside its log.
       - name: Check screenshots with Send Log
         run: python3 tests/host/check-bcd-screenshot.py --require-swift
+        # Not in Taala2/bcd-personal: reads bcd-logs/worker/* and tools/pull-logs.py, which tools/export-public.py keeps out of the public tree.
+        if: github.repository != 'Taala2/bcd-personal'
 
       # madeira-bcd FORK-ONLY: Settings › Feedback (FeedbackUpload*.swift, BCDSettingsFeedback.swift,
       # the intake's POST /v1/feedback, tools/pull-logs.py --feedback): the intake's gate, endpoint
@@ -210,6 +218,8 @@ jobs:
       # section's place after Logs, and the pull tool never printing the key.
       - name: Check Settings › Feedback
         run: python3 tests/host/check-feedback.py --require-swift
+        # Not in Taala2/bcd-personal: reads bcd-logs/worker/* and tools/pull-logs.py, which tools/export-public.py keeps out of the public tree.
+        if: github.repository != 'Taala2/bcd-personal'
 
       # A newer BCD, said at most once a day (BCDUpdateCheck.swift, BCDUpdateNotice.swift): the source's shape
       # as tools/update-altsource.py writes it, the build compare, the day key, one host with a size cap, the
@@ -443,6 +453,8 @@ jobs:
       # file is deleted or overwritten. Needs macOS Foundation and swift (bookmarks, links, real folders).
       - name: Check games on an external SSD (opt-in by use, reconnect, safety)
         run: python3 tests/host/check-external-storage.py --require-swift
+        # Not in Taala2/bcd-personal: reads docs/EXTERNAL-STORAGE.md, which tools/export-public.py keeps out of the public tree.
+        if: github.repository != 'Taala2/bcd-personal'
 
       # The in-place External SSD folder-picker fix (app/Madeira/ExternalGamesPicker.swift): on an install
       # whose signed App ID differs from the bundle id, correct the picker's host identity (only, never the
@@ -1341,6 +1353,8 @@ jobs:
         env:
           MINGW: ${{ github.workspace }}/toolchains/llvm-mingw-20260421-ucrt-macos-universal/bin
         run: python3 tests/host/check-d3d8-to-d3d9.py
+        # Not in Taala2/bcd-personal: reads third-party/d3d8to9/LICENSE.md, which tools/export-public.py keeps out of the public tree.
+        if: github.repository != 'Taala2/bcd-personal'
 
       # The Xcode project links 7 archives out of FEX/build-ios/ -- FEXCore,
       # FEXCore_Base, JemallocLibs plus the External deps. Nothing built them
@@ -3047,6 +3061,8 @@ jobs:
       # cabinet headers rather than trusting its container format.
       - name: Check the VC++ runtime list and the MFC switch
         run: python3 tests/host/check-vcruntime-mfc.py
+        # Not in Taala2/bcd-personal: reads tools/fetch-vcruntime.md, which tools/export-public.py keeps out of the public tree.
+        if: github.repository != 'Taala2/bcd-personal'
 
       # madeira-bcd (round 591): MFC for a game BCD Dock starts (env.MADEIRA_MFC_DOCK = 1), linked into sysx64.
       - name: Check MFC in a BCD Dock session
@@ -3219,6 +3235,8 @@ jobs:
       # same fourteen DLLs byte for byte; tests/host/check-vcruntime.py on synthetic folders.
       - name: Check the VC++ runtime sources and tools/fetch-vcruntime.sh
         run: python3 tests/host/check-vcruntime-sources.py
+        # Not in Taala2/bcd-personal: reads tools/fetch-vcruntime.md, which tools/export-public.py keeps out of the public tree.
+        if: github.repository != 'Taala2/bcd-personal'
 
       # madeira-bcd (upstream port 2026-10-25): a Steam request whose connection closes while it is being sent is resumed once (the
       # production SteamSession.swift with a stand-in connection; callServiceMethod, sendAndWait and sendAndWaitPICS).

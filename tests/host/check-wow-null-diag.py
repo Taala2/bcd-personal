@@ -141,7 +141,42 @@ int ios_jit_low_contains( uintptr_t a ) { (void)a; return 0; }
 '''
 
 MAIN = r'''
-#define WIN 0x5000000000ULL
+/* The guest window: a 4 GB aligned range that is free in this process, found at its first use. A fixed address is not safe: on
+ * macOS 15 arm64 a process already has [0x1000000000, 0x7000000000) reserved (prot 0/0), and 0x5000000000 was inside it. The range
+ * is found with mach_vm_map and released again, so the fixed allocations of the scenarios land in free memory; MADEIRA_TEST_WIN
+ * (hex) names a base instead, so that every run of one check uses the same window. A base that cannot be found or is not 4 GB
+ * aligned ends the run like a failed allocation. */
+static uint64_t test_win_base(void)
+{
+    static uint64_t base;
+    const char *e;
+
+    if (base) return base;
+    e = getenv("MADEIRA_TEST_WIN");
+    if (e && *e) base = strtoull(e, NULL, 16);
+    else
+    {
+        mach_vm_address_t m = 0;
+        kern_return_t kr = mach_vm_map(mach_task_self(), &m, 0x100000000ULL, 0xffffffffULL, VM_FLAGS_ANYWHERE, MACH_PORT_NULL, 0, FALSE,
+                                       VM_PROT_NONE, VM_PROT_NONE, VM_INHERIT_DEFAULT);
+        if (kr != KERN_SUCCESS)
+        {
+            fprintf(stderr, "[win] mach_vm_map(4 GB, 4 GB aligned, anywhere) = %d (%s)\n", kr, mach_error_string(kr));
+            puts("win-failed");
+            exit(3);
+        }
+        mach_vm_deallocate(mach_task_self(), m, 0x100000000ULL);
+        base = m;
+    }
+    if (!base || (base & 0xffffffffULL) || base < 0x100000000ULL)
+    {
+        fprintf(stderr, "[win] 0x%llx is no 4 GB aligned window base\n", (unsigned long long)base);
+        puts("win-failed");
+        exit(3);
+    }
+    return base;
+}
+#define WIN test_win_base()
 #define TEB64_G 0x300000u      /* the 64-bit TEB, guest-relative: the host TEB64 is WIN + this */
 #define TEB32_G 0x302000u
 #define PEB32_G 0x311000u

@@ -183,7 +183,42 @@ static kern_return_t counting_read( vm_map_t t, mach_vm_address_t a, mach_vm_siz
 
 # the window of the 592 log of Most Wanted: speed.exe 0x400000 (block at 0x81ab75), ntdll 0xfff40000, TEB32 0x302000, PEB32 0x311000
 MAIN = r'''
-#define WIN 0x5000000000ULL
+/* The guest window: a 4 GB aligned range that is free in this process, found at its first use. A fixed address is not safe: on
+ * macOS 15 arm64 a process already has [0x1000000000, 0x7000000000) reserved (prot 0/0), and 0x5000000000 was inside it. The range
+ * is found with mach_vm_map and released again, so the fixed allocations of the scenarios land in free memory; MADEIRA_TEST_WIN
+ * (hex) names a base instead, so that every run of one check uses the same window. A base that cannot be found or is not 4 GB
+ * aligned ends the run like a failed allocation. */
+static uint64_t test_win_base(void)
+{
+    static uint64_t base;
+    const char *e;
+
+    if (base) return base;
+    e = getenv("MADEIRA_TEST_WIN");
+    if (e && *e) base = strtoull(e, NULL, 16);
+    else
+    {
+        mach_vm_address_t m = 0;
+        kern_return_t kr = mach_vm_map(mach_task_self(), &m, 0x100000000ULL, 0xffffffffULL, VM_FLAGS_ANYWHERE, MACH_PORT_NULL, 0, FALSE,
+                                       VM_PROT_NONE, VM_PROT_NONE, VM_INHERIT_DEFAULT);
+        if (kr != KERN_SUCCESS)
+        {
+            fprintf(stderr, "[win] mach_vm_map(4 GB, 4 GB aligned, anywhere) = %d (%s)\n", kr, mach_error_string(kr));
+            puts("win-failed");
+            exit(3);
+        }
+        mach_vm_deallocate(mach_task_self(), m, 0x100000000ULL);
+        base = m;
+    }
+    if (!base || (base & 0xffffffffULL) || base < 0x100000000ULL)
+    {
+        fprintf(stderr, "[win] 0x%llx is no 4 GB aligned window base\n", (unsigned long long)base);
+        puts("win-failed");
+        exit(3);
+    }
+    return base;
+}
+#define WIN test_win_base()
 #define TEB64_G 0x300000u
 #define TEB32_G 0x302000u
 #define PEB32_G 0x311000u
@@ -330,6 +365,7 @@ int main(int argc, char **argv)
     const char *s = argc > 1 ? argv[1] : "";
     struct world w;
 
+    if (!strcmp(s, "window")) { printf("0x%llx\n", (unsigned long long)WIN); return 0; }
     if (!strcmp(s, "enabled")) { printf("enabled=%d\n", ios_x86_fault_enabled()); return 0; }
     w = make();
     if (!strcmp(s, "av")) { guarded_av(&w, BLOCK, WIN + 0xb514ab6a); printf("reads=%lu\n", g_reads); return 0; }
@@ -373,10 +409,19 @@ else:
                            capture_output=True, text=True)
         check('the production header compiles (host cc, -Wall -Wextra -Werror)', c.returncode == 0, c.stderr[-3000:])
         if c.returncode == 0:
+            test_win = {}
+
             def run(scn, **env):
                 e = {k: v for k, v in os.environ.items() if k != 'MADEIRA_X86_FAULT_DUMP'}
+                e.update(test_win)
                 e.update(env)
                 return subprocess.run([str(d / 'h'), scn], capture_output=True, text=True, env=e)
+
+            # the guest window this run of the check uses (the harness finds a free one; see test_win_base)
+            r = run('window')
+            window = r.stdout.strip()
+            check('a free 4 GB aligned guest window is found', r.returncode == 0 and window.startswith('0x'), r.stderr + r.stdout)
+            test_win['MADEIRA_TEST_WIN'] = window
 
             def lines(r):
                 return [l for l in r.stderr.splitlines() if l.startswith('[x86-fault]')]
@@ -401,7 +446,7 @@ else:
                 print(r.stderr)
             check('the headline: the fault address, the block and its module+RVA, the registers of the 592 log',
                   ls and ls[0].startswith('[x86-fault] #1 a 32-bit guest faulted at guest 0xb514ab6a in the block that starts at guest 0x0081ab75 (speed.exe+0x41ab75), '
-                                          'window 0x5000000000, 2 modules in the PEB32 list;')
+                                          'window ' + window + ', 2 modules in the PEB32 list;')
                   and 'EAX=0xa6a0110 ECX=0xb514ab6a EDX=0x0 EBX=0x0 ESI=0x0 EDI=0xa6a00c0 EBP=0x127fdf4 ESP=0x127fddc' in ls[0], r.stderr)
             check('the fault address minus each register shows the pattern: -EDI=0xaaaaaaaa, and -ECX=0x0',
                   any('fault address minus each register (mod 2^32):' in l and '-EDI=0xaaaaaaaa' in l and '-ECX=0x0' in l and '-EAX=0xaaaaaa5a' in l for l in ls), r.stderr)
@@ -442,7 +487,7 @@ else:
             ls = lines(r)
             allv = r.stderr.splitlines()
             check('an int3: its own headline (not a fault), the registers of the Underground 2 log, and the code window labelled int3 with the cc at +0',
-                  ls and ls[0].startswith('[x86-fault] #1 a 32-bit guest executed int3 at guest 0x004405a9 (speed.exe+0x405a9), window 0x5000000000, 2 modules')
+                  ls and ls[0].startswith('[x86-fault] #1 a 32-bit guest executed int3 at guest 0x004405a9 (speed.exe+0x405a9), window ' + window + ', 2 modules')
                   and 'EAX=0x0 ECX=0x0 EDX=0x82804c EBX=0x6 ESI=0xaa EDI=0xa6a00c0 EBP=0x127fdf4 ESP=0x127fddc' in ls[0]
                   and not any('fault address minus' in l for l in ls)
                   and any(l.startswith('[x86-fault]   code int3 +0: cc ') for l in allv), r.stderr)

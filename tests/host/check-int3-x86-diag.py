@@ -570,7 +570,9 @@ check('tools/int3x86-match.py (finds a report\'s code window in a PE file by vot
 # ---------------------------------------------------------------- 4. catalog, launcher, CI, iOS compile
 wine0 = Path(os.environ.get('WINE_SRC', root / 'wine'))
 if (wine0 / 'include/winternl.h').exists() and shutil.which('xcrun'):
+    # stdarg.h first, as Wine's own sources do: minwindef.h defines __ms_va_list as va_list, which winternl.h uses
     off_src = r'''
+#include <stdarg.h>
 #include <stddef.h>
 #include "windef.h"
 #include "winternl.h"

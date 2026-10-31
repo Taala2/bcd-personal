@@ -80,7 +80,9 @@ check('the module list is bounded (96 entries) and walked once', 'walked++ < 96'
 
 wine = Path(os.environ.get('WINE_SRC', root / 'wine'))
 if (wine / 'include/winternl.h').exists() and shutil.which('xcrun'):
+    # stdarg.h first, as Wine's own sources do: minwindef.h defines __ms_va_list as va_list, which winternl.h uses
     src = r'''
+#include <stdarg.h>
 #include <stddef.h>
 #include "windef.h"
 #include "winternl.h"

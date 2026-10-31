@@ -119,6 +119,42 @@ static void alloc_failed_report(uint64_t a, size_t n, kern_return_t kr)
     else
         fprintf(stderr, "[alloc_at]   mach_vm_region = %d (%s)\n", rk, mach_error_string(rk));
 }
+/* The guest range of the scenarios: 64 GB, 64 GB aligned, free in this process, found at its first use. Fixed addresses are not
+ * safe: on macOS 15 arm64 a process already has [0x1000000000, 0x7000000000) reserved (prot 0/0), where 0x6000000000 was. The
+ * scenarios use GB (the guest view), GB + 0x100000000 (the alias), GB + 0x300000000 (edge) and GB + 0xf00000000, which stays
+ * unmapped. The range is found with mach_vm_map and released again; MADEIRA_TEST_GUEST (hex) names a base instead, so that every
+ * run of one check uses the same one. A base that cannot be found ends the run like a failed allocation. */
+static uint64_t test_guest_base(void)
+{
+    static uint64_t base;
+    const char *e;
+
+    if (base) return base;
+    e = getenv("MADEIRA_TEST_GUEST");
+    if (e && *e) base = strtoull(e, NULL, 16);
+    else
+    {
+        mach_vm_address_t m = 0;
+        kern_return_t kr = mach_vm_map(mach_task_self(), &m, 0x1000000000ULL, 0xfffffffffULL, VM_FLAGS_ANYWHERE, MACH_PORT_NULL, 0, FALSE,
+                                       VM_PROT_NONE, VM_PROT_NONE, VM_INHERIT_DEFAULT);
+        if (kr != KERN_SUCCESS)
+        {
+            fprintf(stderr, "[guest] mach_vm_map(64 GB, 64 GB aligned, anywhere) = %d (%s)\n", kr, mach_error_string(kr));
+            puts("guest-failed");
+            exit(3);
+        }
+        mach_vm_deallocate(mach_task_self(), m, 0x1000000000ULL);
+        base = m;
+    }
+    if (!base || (base & 0xfffffffffULL) || base < 0x100000000ULL || base >= 0x7f0000000000ULL)
+    {
+        fprintf(stderr, "[guest] 0x%llx is no usable guest base\n", (unsigned long long)base);
+        puts("guest-failed");
+        exit(3);
+    }
+    return base;
+}
+#define GB test_guest_base()
 static uint8_t *page(uint64_t at, size_t n)
 {
     mach_vm_address_t m = at;
@@ -130,30 +166,31 @@ static uint8_t *page(uint64_t at, size_t n)
 int main(int argc, char **argv)
 {
     const char *s = argc > 1 ? argv[1] : "";
-    uint8_t *g = page(0x6000000000ULL, 0x8000), *a = page(0x6100000000ULL, 0x8000);
-    /* the guest view: the block's address 0x6000001e0 sits 0x1e0 into the first page; bytes ramp 0,1,2,... so every row is checkable */
+    if (!strcmp(s, "guest")) { printf("0x%llx\n", (unsigned long long)GB); return 0; }
+    uint8_t *g = page(GB, 0x8000), *a = page(GB + 0x100000000ULL, 0x8000);
+    /* the guest view: the block's address GB + 0x1e0 sits 0x1e0 into the first page; bytes ramp 0,1,2,... so every row is checkable */
     for (unsigned i = 0; i < 0x4000; i++) { g[i] = (uint8_t)i; a[i] = (uint8_t)i; }
-    g_guest_lo = 0x6000000000ULL; g_alias_lo = 0x6100000000ULL;
+    g_guest_lo = GB; g_alias_lo = GB + 0x100000000ULL;
     if (!strcmp(s, "plain")) {
         g_guest_lo = 0;                                                      /* no alias covers it */
-        ios_ill_guest_bytes(0x60000001e0ULL, 0x169ff84e8ULL);
+        ios_ill_guest_bytes(GB + 0x1e0, 0x169ff84e8ULL);
     } else if (!strcmp(s, "same")) {
-        ios_ill_guest_bytes(0x60000001e0ULL, 0x169ff84e8ULL);
+        ios_ill_guest_bytes(GB + 0x1e0, 0x169ff84e8ULL);
     } else if (!strcmp(s, "diff")) {
         a[0x1e0 + 5] = 0xff;                                                 /* the alias differs five bytes into the block */
-        ios_ill_guest_bytes(0x60000001e0ULL, 0x169ff84e8ULL);
+        ios_ill_guest_bytes(GB + 0x1e0, 0x169ff84e8ULL);
     } else if (!strcmp(s, "diff-before")) {
         a[0x1e0 - 3] = 0xee;                                                 /* ...or three bytes before it */
-        ios_ill_guest_bytes(0x60000001e0ULL, 0x169ff84e8ULL);
+        ios_ill_guest_bytes(GB + 0x1e0, 0x169ff84e8ULL);
     } else if (!strcmp(s, "edge")) {
         /* the block is at the very start of a mapped range: the 16 bytes before it are not there */
-        uint8_t *e = page(0x6300000000ULL, 0x4000);
+        uint8_t *e = page(GB + 0x300000000ULL, 0x4000);
         for (unsigned i = 0; i < 0x4000; i++) e[i] = (uint8_t)(i + 1);
         g_guest_lo = 0;
-        ios_ill_guest_bytes(0x6300000000ULL, 0x169ff84e8ULL);
+        ios_ill_guest_bytes(GB + 0x300000000ULL, 0x169ff84e8ULL);
     } else if (!strcmp(s, "cap")) {
         g_guest_lo = 0;
-        for (int i = 0; i < 5; i++) ios_ill_guest_bytes(0x60000001e0ULL, 0x169ff84e8ULL);
+        for (int i = 0; i < 5; i++) ios_ill_guest_bytes(GB + 0x1e0, 0x169ff84e8ULL);
     } else if (!strcmp(s, "bad")) {
         ios_ill_guest_bytes(0, 0x169ff84e8ULL);
         ios_ill_guest_bytes(0x1000, 0x169ff84e8ULL);
@@ -163,7 +200,7 @@ int main(int argc, char **argv)
         puts("bad-done");
     } else if (!strcmp(s, "unmapped")) {
         g_guest_lo = 0;
-        ios_ill_guest_bytes(0x6f00000000ULL, 0x169ff84e8ULL);                  /* nothing there: all ?? */
+        ios_ill_guest_bytes(GB + 0xf00000000ULL, 0x169ff84e8ULL);                  /* nothing there: all ?? */
     }
     return 0;
 }
@@ -180,8 +217,16 @@ else:
                            capture_output=True, text=True)
         check('the production header compiles (host cc, -Wall -Wextra -Werror)', c.returncode == 0, c.stderr[-3000:])
         if c.returncode == 0:
+            test_env = dict(os.environ)
+
             def run(scn):
-                return subprocess.run([str(d / 'h'), scn], capture_output=True, text=True)
+                return subprocess.run([str(d / 'h'), scn], capture_output=True, text=True, env=test_env)
+
+            # the guest range this run of the check uses (the harness finds a free one; see test_guest_base)
+            r = run('guest')
+            gb = int(r.stdout.strip(), 16) if r.returncode == 0 and r.stdout.strip().startswith('0x') else 0
+            check('a free 64 GB aligned guest range is found', gb != 0, r.stderr + r.stdout)
+            test_env['MADEIRA_TEST_GUEST'] = '0x%x' % gb
 
             def lines(r):
                 return [l for l in r.stderr.splitlines() if l.startswith('[ill-guest]')]
@@ -190,13 +235,13 @@ else:
             r = run('plain')
             ls = lines(r)
             check('a plain page: one headline with the 64 bytes (16 before the block, 48 from it), the block address, the host pc and "64 of 64 readable"',
-                  len(ls) == 2 and ls[0].startswith('[ill-guest] #1 FEX could not translate the block at guest 0x60000001e0 (host pc 0x169ff84e8)')
+                  len(ls) == 2 and ls[0].startswith('[ill-guest] #1 FEX could not translate the block at guest 0x%x (host pc 0x169ff84e8)' % (gb + 0x1e0))
                   and '(64 of 64 readable): ' + ramp in ls[0], r.stderr)
             check('...and says that no anonymous RWX alias covers it', 'no anonymous RWX alias covers that address' in ls[1], r.stderr)
             r = run('same')
             ls = lines(r)
             check('an alias that agrees: "the two views agree" with the alias pointer', len(ls) == 2 and 'the two views agree' in ls[1]
-                  and 'alias pointer 0x61000001e0' in ls[1], r.stderr)
+                  and 'alias pointer 0x%x' % (gb + 0x1000001e0) in ls[1], r.stderr)
             r = run('diff')
             ls = lines(r)
             check('an alias that differs five bytes into the block: DIFFERENT, +5, the alias bytes with ff at that place',

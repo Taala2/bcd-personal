@@ -79,6 +79,7 @@ PRELUDE = r'''
 #include <unistd.h>
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
+#include <mach/mach_error.h>
 
 #define arm_thread_state64_t fake_arm_thread_state64_t
 typedef struct { uint64_t __x[29]; uint64_t __fp, __lr, __sp, __pc; } fake_arm_thread_state64_t;
@@ -99,10 +100,30 @@ uintptr_t ios_jit_anon_alias_lookup(uintptr_t a)
 '''
 
 MAIN = r'''
+/* A FIXED allocation that fails says why, on stderr (the checks print it as their detail): the address and size asked for, the
+ * kernel's answer, the page size and the first mapping at or above the address. stdout ("alloc-failed") and exit(3) stay as they were. */
+static void alloc_failed_report(uint64_t a, size_t n, kern_return_t kr)
+{
+    mach_vm_address_t ra = a;
+    mach_vm_size_t rs = 0;
+    vm_region_basic_info_data_64_t ri;
+    mach_msg_type_number_t rc = VM_REGION_BASIC_INFO_COUNT_64;
+    mach_port_t ro = MACH_PORT_NULL;
+    kern_return_t rk = mach_vm_region(mach_task_self(), &ra, &rs, VM_REGION_BASIC_INFO_64, (vm_region_info_t)&ri, &rc, &ro);
+
+    fprintf(stderr, "[alloc_at] mach_vm_allocate(0x%llx, 0x%zx, VM_FLAGS_FIXED) = %d (%s); page size 0x%lx\n",
+            (unsigned long long)a, n, kr, mach_error_string(kr), (unsigned long)vm_page_size);
+    if (rk == KERN_SUCCESS)
+        fprintf(stderr, "[alloc_at]   first mapping at or above it: [0x%llx, 0x%llx) prot %d/%d%s\n", (unsigned long long)ra,
+                (unsigned long long)(ra + rs), ri.protection, ri.max_protection, ra < a + n ? " -- OVERLAPS the request" : "");
+    else
+        fprintf(stderr, "[alloc_at]   mach_vm_region = %d (%s)\n", rk, mach_error_string(rk));
+}
 static uint8_t *page(uint64_t at, size_t n)
 {
     mach_vm_address_t m = at;
-    if (mach_vm_allocate(mach_task_self(), &m, n, VM_FLAGS_FIXED) != KERN_SUCCESS) { puts("alloc-failed"); exit(3); }
+    kern_return_t kr = mach_vm_allocate(mach_task_self(), &m, n, VM_FLAGS_FIXED);
+    if (kr != KERN_SUCCESS) { alloc_failed_report(at, n, kr); puts("alloc-failed"); exit(3); }
     return (uint8_t *)m;
 }
 

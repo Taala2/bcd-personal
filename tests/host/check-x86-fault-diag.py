@@ -600,7 +600,7 @@ else:
             check('round 624 (A-S12): the exact EIP from FEX\'s block table names the faulting instruction, State.rip is said to be the last block entry',
                   ls and ls[0].startswith('[x86-fault] #1 a 32-bit guest faulted at guest 0xb514ab6a at EIP 0x0081ab7a (speed.exe+0x41ab7a) '
                                           '[exact: the block table of FEX for host pc 0x')
-                  and 'State.rip=0x0081ab75 is only the last block entry], window 0x5000000000, 2 modules in the PEB32 list;' in ls[0]
+                  and 'State.rip=0x0081ab75 is only the last block entry], window ' + window + ', 2 modules in the PEB32 list;' in ls[0]
                   and not any('note:' in l for l in ls), r.stderr)
             check('...the code window is the instruction\'s ("eip"), its bytes at +0 are the faulting mov eax,[ecx], and the PE identity is the program\'s',
                   any(l.startswith('[x86-fault]   code eip: 256 bytes before and 160 after guest 0x0081ab7a (speed.exe+0x41ab7a)') for l in allv)

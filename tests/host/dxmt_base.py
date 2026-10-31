@@ -13,6 +13,9 @@ from pathlib import Path
 import subprocess
 
 OVERLAY_BASE = 'db546ee466ad50ec6463edb5fa183de11db43761'
+# Where OVERLAY_BASE is public when the checkout's origin does not have it: the public mirror (thebcd69/bcd-dxmt, the URL in the
+# public tree's .gitmodules) carries the pin's history, not this commit. It is fetched by its hash, so the object is the same one.
+OVERLAY_HOME = 'https://github.com/willfaust/dxmt.git'
 PIN_MARKER = 'madeira_rp_lean_on'   # willfaust/dxmt#26, in the wave's pin and later
 
 
@@ -23,5 +26,7 @@ def rev(dxmt):
         return 'HEAD'
     have = subprocess.run(['git', '-C', str(dxmt), 'cat-file', '-e', OVERLAY_BASE + '^{commit}'], capture_output=True)
     if have.returncode:
-        subprocess.run(['git', '-C', str(dxmt), 'fetch', '-q', '--depth=1', 'origin', OVERLAY_BASE], check=True)
+        got = subprocess.run(['git', '-C', str(dxmt), 'fetch', '-q', '--depth=1', 'origin', OVERLAY_BASE])
+        if got.returncode:
+            subprocess.run(['git', '-C', str(dxmt), 'fetch', '-q', '--depth=1', OVERLAY_HOME, OVERLAY_BASE], check=True)
     return OVERLAY_BASE

@@ -13,6 +13,10 @@ from pathlib import Path
 import importlib.util, json, os, subprocess, sys, tempfile
 
 root = Path(__file__).resolve().parents[2]
+missing = [p for p in ("tools/cluster-logs.py", "tools/log-facts.py") if not (root / p).is_file()]
+if missing:
+    print('SKIP: %s absent (the public export has no private triage tools)' % ' and '.join(missing))
+    sys.exit(0)
 spec = importlib.util.spec_from_file_location("cluster_logs", root / "tools/cluster-logs.py")
 cl = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cl)

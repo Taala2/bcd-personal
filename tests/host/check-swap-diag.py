@@ -164,10 +164,11 @@ static DWORD GetCurrentThreadId(void) { return 0x42; }
 static void EnterCriticalSection(CRITICAL_SECTION *cs) { pthread_mutex_lock(&cs->m); }
 static void LeaveCriticalSection(CRITICAL_SECTION *cs) { pthread_mutex_unlock(&cs->m); }
 static int timeouts;
-/* The 2000 ms slices run 40 times faster here. */
+/* The 2000 ms slices run 10 times faster here (200 ms): a CI runner woke a 50 ms slice ~135 ms late and started a 10 ms job
+ * more than 40 ms late, so the 40x scale left no room either way. */
 static BOOL SleepConditionVariableCS(CONDITION_VARIABLE *cv, CRITICAL_SECTION *cs, DWORD ms) {
     struct timespec ts;
-    long scaled = (long)ms / 40;
+    long scaled = (long)ms / 10;
     assert(ms == 2000);
     clock_gettime(CLOCK_REALTIME, &ts);
     ts.tv_nsec += scaled * 1000000L;
@@ -235,10 +236,9 @@ int main(void) {
     /* an idle queue: no wait, no line, LastError untouched */
     last_error = 0x1234; mad_queue_drain(&q);
     assert(last_error == 0x1234 && loglen == 0 && timeouts == 0);
-    /* a Present the worker is stuck in for ~10 slices: the drain ends when it does (a CI runner woke a 50 ms slice
-     * ~135 ms late, so ~3.5 slices could end after one timed-out slice) */
+    /* a Present the worker is stuck in for ~7.5 slices: the drain ends when it does */
     q.sub_busy = 1; q.diag_job = MAD_SUB_PRESENT; mad_swd_step(&q, 'D'); worker_done = 0;
-    pthread_create(&t, NULL, finish_job, (void *)(uintptr_t)500);
+    pthread_create(&t, NULL, finish_job, (void *)(uintptr_t)1500);
     last_error = 0x1234; mad_queue_drain(&q);
     assert(worker_done && !q.sub_busy && last_error == 0x1234);
     pthread_join(t, NULL);
@@ -260,7 +260,7 @@ int main(void) {
      * config once, whose line may change LastError, as before) */
     g_present_ahead = 1;
     q.sub_presents = 2; q.diag_job = MAD_SUB_WAIT; worker_done = 0;
-    pthread_create(&t, NULL, finish_present, (void *)(uintptr_t)400);
+    pthread_create(&t, NULL, finish_present, (void *)(uintptr_t)1000);
     last_error = 0x77; mad_present_throttle(&q);
     pthread_join(t, NULL);
     assert(worker_done && q.sub_presents == 1 && last_error == 0x77);

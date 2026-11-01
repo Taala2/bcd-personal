@@ -241,6 +241,10 @@ int main(void) {
     last_error = 0x1234; mad_queue_drain(&q);
     assert(worker_done && !q.sub_busy && last_error == 0x1234);
     pthread_join(t, NULL);
+    /* the assert below names no part: say which one did not hold (the slice count and the lines) before it ends the run */
+    if (!(timeouts >= 2 && strstr(logbuf, "queue drain on queue") && strstr(logbuf, "still waiting after 2 s") &&
+          strstr(logbuf, "the worker is in Present (nextDrawable) for")))
+        fprintf(stderr, "drain: %d slice(s) timed out (2 or more expected), %zu bytes logged:\n%s\n", timeouts, loglen, loglen ? logbuf : "(nothing)");
     assert(timeouts >= 2 && strstr(logbuf, "queue drain on queue") && strstr(logbuf, "still waiting after 2 s") &&
            strstr(logbuf, "the worker is in Present (nextDrawable) for"));
     printf("drain: %d slices, %zu bytes logged\n", timeouts, loglen);

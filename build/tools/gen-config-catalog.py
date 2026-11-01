@@ -2061,6 +2061,11 @@ OVERLAY = {
                 "note": "Default off. Enables the validated atomic write workaround after the matching Slay the Spire 2 or Quaver "
                         "startup failure. Auto-tune offers it only for that game's recorded failure; other games keep their existing path.",
                 "sources": ["build/ntdll-unix/signal_arm64_ios.c"]},
+    "env.MADEIRA_ANON_LDADDAL64": {"category": "Exceptions & threads", "title": "Runtime code-write workaround (64-bit)",
+                "kind": "bool", "default": "0",
+                "note": "Default off. The 64-bit form of the atomic write workaround, for a web-engine game whose log shows "
+                        "[store-undecoded] insn=0xf8e800c6 with alias OK (Internship [demo]). Other games keep their existing path.",
+                "sources": ["build/ntdll-unix/signal_arm64_ios.c"]},
     "env.MADEIRA_ANON_CAS_FLUSH": {"category": "Exceptions & threads", "title": "Atomic code patches go through the emulator",
                 "kind": "bool", "default": "0",
                 "note": "Default off: a compare-and-swap the game does on its own executable memory (a .NET runtime patching a stub it "

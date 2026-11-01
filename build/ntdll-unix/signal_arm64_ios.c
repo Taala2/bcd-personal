@@ -1520,6 +1520,36 @@ static int ios_mach_emulate_ldaddal32(uint32_t insn, uintptr_t rw_addr, uint64_t
     return 1;
 }
 
+/* madeira-bcd personal (2026-11-01): env.MADEIRA_ANON_LDADDAL64 = 1, default
+ * off, the same gate as MADEIRA_ANON_LDADDAL32. Read per session. */
+static int ios_anon_ldaddal64_on(void)
+{
+    const char *value = getenv( "MADEIRA_ANON_LDADDAL64" );
+    return value && value[0] == '1' && !value[1];
+}
+
+/* madeira-bcd personal (2026-11-01): Internship [demo] (NW.js, build 627,
+ * iPhone16,1) has its renderer reach LDADDAL X8,X6,[X6] (f8e800c6) on V8 heap
+ * pages behind an anonymous RX alias ("[store-undecoded] ... alias OK", then
+ * "[mach_exc] UNHANDLED", 8 times a run). The 64-bit twin of the word helper
+ * above: the AL fetch-add family only, naturally aligned, caller establishes
+ * full alias coverage, genuinely atomic. */
+static int ios_mach_emulate_ldaddal64(uint32_t insn, uintptr_t rw_addr, uint64_t gpr[29])
+{
+    unsigned rs, rt;
+    uint64_t value, old;
+    if (!ios_anon_ldaddal64_on()) return 0;
+    if ((insn & 0xffe0fc00u) != 0xf8e00000u) return 0;
+    rs = (insn >> 16) & 31;
+    rt = insn & 31;
+    if ((rs >= 29 && rs != 31) || (rt >= 29 && rt != 31)) return 0;
+    if (!rw_addr || (rw_addr & 7)) return 0;
+    value = rs == 31 ? 0 : gpr[rs];
+    old = __atomic_fetch_add((uint64_t *)rw_addr, value, __ATOMIC_SEQ_CST);
+    if (rt != 31) gpr[rt] = old;
+    return 1;
+}
+
 /* ml938/ml939: defined far below, next to the store emulator they reuse.
  * Declared here because the Mach exception thread is the primary caller and
  * sits earlier in the file. */
@@ -5680,6 +5710,24 @@ static void *ios_mach_exception_thread( void *arg )
                         if (ldadd_anon_logs++ < 16)
                             dprintf(STDERR_FILENO,
                                     "[anon-ldadd] build608 insn=%08x pc=%llx addr=%llx rw=%llx width=4\n",
+                                    insn, (unsigned long long)fault_pc,
+                                    (unsigned long long)fault_addr, (unsigned long long)rw_addr);
+                    }
+                    /* madeira-bcd personal: the X-width form of the same family
+                     * (Internship [demo]'s V8 heap), on a naturally aligned
+                     * doubleword wholly inside this anonymous alias. Requires
+                     * MADEIRA_ANON_LDADDAL64=1; off, nothing here changes. */
+                    if (!emulated && !in_jit && !anon_cas_handoff &&
+                        (insn & 0xffe0fc00u) == 0xf8e00000u &&
+                        !(fault_addr & 7) &&
+                        ios_jit_anon_alias_lookup( fault_addr + 7 ) == rw_addr + 7 &&
+                        ios_mach_emulate_ldaddal64(insn, rw_addr, state.__x))
+                    {
+                        static unsigned ldadd64_anon_logs;
+                        emulated = 1;
+                        if (ldadd64_anon_logs++ < 16)
+                            dprintf(STDERR_FILENO,
+                                    "[anon-ldadd] personal insn=%08x pc=%llx addr=%llx rw=%llx width=8\n",
                                     insn, (unsigned long long)fault_pc,
                                     (unsigned long long)fault_addr, (unsigned long long)rw_addr);
                     }

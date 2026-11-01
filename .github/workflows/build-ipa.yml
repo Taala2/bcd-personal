@@ -2899,6 +2899,9 @@ jobs:
       - name: Check anonymous alias LDADDAL word emulation
         run: python3 tests/host/check-anon-ldadd.py
 
+      - name: Check anonymous alias LDADDAL doubleword emulation
+        run: python3 tests/host/check-anon-ldadd64.py
+
       # madeira-bcd (build 591), engine fixes from the 580 log wave: env.MADEIRA_FAULT_GUARD_RATE (fault-storm guards that ended live Unity
       # Mono games), env.MADEIRA_USER_VA_GB (FINAL FANTASY TACTICS asks for 256 GiB), create_view's assert, env.MADEIRA_ANON_CAS_FLUSH
       # (Jetboard Joust), and the log-only diagnostics: [stp-split] read-back, [cxx-type], [smc-loop].

@@ -581,6 +581,10 @@ with tempfile.TemporaryDirectory(prefix='guest-instruction-') as directory:
     cc = os.environ.get('CC', 'cc')
     flags = ['-std=gnu11', '-O1', '-g', '-Wall', '-Wextra', '-Werror',
              '-fsanitize=address,undefined', '-fno-sanitize-recover=all']
+    # The cases lay the image out in 4 KB pages (mprotect at +0x1000 steps, page == 4096 asserted). An arm64 Mac has 16 KB pages:
+    # there the check is built for x86_64 and runs under Rosetta 2, whose processes see 4 KB pages; every case and assertion is the same.
+    if sys.platform == 'darwin' and os.sysconf('SC_PAGE_SIZE') != 4096:
+        flags += ['-arch', 'x86_64']
     # macOS ASan has no leak detector (it aborts at start-up), and its symbolizer opens a password dialog on the Mac: off.
     env = dict(os.environ, ASAN_OPTIONS='symbolize=0:detect_leaks=' + ('0' if sys.platform == 'darwin' else '1'),
                UBSAN_OPTIONS='halt_on_error=1:symbolize=0')

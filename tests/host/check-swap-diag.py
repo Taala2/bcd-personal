@@ -235,9 +235,10 @@ int main(void) {
     /* an idle queue: no wait, no line, LastError untouched */
     last_error = 0x1234; mad_queue_drain(&q);
     assert(last_error == 0x1234 && loglen == 0 && timeouts == 0);
-    /* a Present the worker is stuck in for ~3.5 slices: the drain ends when it does */
+    /* a Present the worker is stuck in for ~10 slices: the drain ends when it does (a CI runner woke a 50 ms slice
+     * ~135 ms late, so ~3.5 slices could end after one timed-out slice) */
     q.sub_busy = 1; q.diag_job = MAD_SUB_PRESENT; mad_swd_step(&q, 'D'); worker_done = 0;
-    pthread_create(&t, NULL, finish_job, (void *)(uintptr_t)175);
+    pthread_create(&t, NULL, finish_job, (void *)(uintptr_t)500);
     last_error = 0x1234; mad_queue_drain(&q);
     assert(worker_done && !q.sub_busy && last_error == 0x1234);
     pthread_join(t, NULL);
@@ -259,7 +260,7 @@ int main(void) {
      * config once, whose line may change LastError, as before) */
     g_present_ahead = 1;
     q.sub_presents = 2; q.diag_job = MAD_SUB_WAIT; worker_done = 0;
-    pthread_create(&t, NULL, finish_present, (void *)(uintptr_t)120);
+    pthread_create(&t, NULL, finish_present, (void *)(uintptr_t)400);
     last_error = 0x77; mad_present_throttle(&q);
     pthread_join(t, NULL);
     assert(worker_done && q.sub_presents == 1 && last_error == 0x77);

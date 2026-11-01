@@ -585,7 +585,7 @@ else:
                   [l for l in ls if l.startswith('[x86-fault]   views around ')] == ['[x86-fault]   views around fault=0xb514ab6a:',
                                                                                  '[x86-fault]   views around EBP=0x0127fdf4:',
                                                                                  '[x86-fault]   views around EDI=0x0a6a00c0:']
-                  and len([l for l in allv if l.startswith('[fault-rgn] (fake) addr=0x50b514ab6a')]) == 1, r.stderr)
+                  and len([l for l in allv if l.startswith('[fault-rgn] (fake) addr=0x%x' % (int(window, 16) + 0xb514ab6a))]) == 1, r.stderr)
             check('round 624 (D2 S8 d2): the allocations before the fault, after the views', any(l.startswith('[x86-fault]   WoW64 allocations and frees before the fault (fake) 0xb514ab6a') for l in ls), r.stderr)
             check('round 624 (D2 S8 d3): the image holds the fault address at speed.exe+0x200, the one place',
                   any(l.startswith('[x86-fault]   the image speed.exe holds the fault address 0xb514ab6a as a dword at 1 place(s): speed.exe+0x200 (') for l in ls), r.stderr)

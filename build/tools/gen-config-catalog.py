@@ -121,6 +121,14 @@ OVERLAY = {
                         "arenas). A game that really uses the whole reservation would fault, so set it per game. Logged "
                         "as [jumbo-half]. Read at every such request.",
                 "sources": ["build/ntdll-unix/virtual_ios.c"]},
+    "env.MADEIRA_WASM_GUARD_TRIM": {"category": "Memory & JIT pool", "title": "Smaller reservation for web-engine WebAssembly memory",
+                "kind": "bool", "default": "0",
+                "note": "Default off. 1: a reserve-only 10 GB request that finds no hole (the V8 engine's WebAssembly memory "
+                        "in NW.js and other Chromium 85 era games) gets 6 GB, else 4 GB: the 2 GB guard below the memory plus "
+                        "4 or 2 GB above its start. For a web-engine game stuck loading whose log shows size=0x280000000 "
+                        "refused (Internship [demo]). An out-of-bounds access past that size is no longer caught, so set it "
+                        "per game. Logged as [wasm-guard-trim].",
+                "sources": ["build/ntdll-unix/virtual_ios.c"]},
     "env.MADEIRA_FEX_BAND_KEEP_MB": {"category": "Memory & JIT pool", "title": "Keep the lowest MB of the emulator's address range for the emulator",
                 "kind": "int", "default": "0",
                 "note": "Default 0 (off). N MB: reservations of 32 MB to 1 GB that BCD places above the game's own range "

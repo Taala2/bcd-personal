@@ -2924,6 +2924,11 @@ jobs:
       - name: Check jumbo half
         run: python3 tests/host/check-jumbo-half.py
 
+      # madeira-bcd personal: env.MADEIRA_WASM_GUARD_TRIM (off by default) gives a failed 10 GB
+      # V8 WebAssembly memory reservation 6 or 4 GB (Internship [demo], NW.js).
+      - name: Check WebAssembly guard trim
+        run: python3 tests/host/check-wasm-guard-trim.py
+
       # madeira-bcd: env.MADEIRA_ALIAS_RELEASE (off by default): anonymous JIT aliases follow
       # MEM_RELEASE and MEM_DECOMMIT (Ratchet & Clank: Rift Apart froze loading a save).
       - name: Check alias release

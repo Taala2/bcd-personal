@@ -3289,6 +3289,7 @@ static void wine_session_end(void)
     unsetenv("MADEIRA_NTDLL_SYNC");   /* madeira-bcd: a game's switch is its own */
     unsetenv("MADEIRA_ANON_LDADDAL32"); /* build 608: opt-in belongs only to the game that enabled it */
     unsetenv("MADEIRA_ANON_LDADDAL64"); /* madeira-bcd personal: likewise */
+    unsetenv("MADEIRA_WASM_GUARD_TRIM"); /* madeira-bcd personal: likewise */
     /* madeira-bcd: Diablo II: Resurrected's executable-section switches (thebcd69/bcd-games#4), likewise */
     unsetenv("MADEIRA_NTDLL_XSEC"); unsetenv("MADEIRA_SHARED_SECTION_EXEC"); unsetenv("MADEIRA_NTDLL_DATA_SYNC_RANGE");
     unsetenv("MADEIRA_FAULT_LOOP_GUEST_PROGRESS"); unsetenv("MADEIRA_D2R_PROBE_RECOVERY");

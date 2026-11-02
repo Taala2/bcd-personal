@@ -28,6 +28,15 @@ jobs:
       actions: read
     timeout-minutes: 360
     steps:
+      # madeira-bcd personal: a public fork build keeps its IPAs only encrypted (see "Encrypt both unsigned IPAs"
+      # below); stop at once, not after the build, when the IPA_PASSWORD secret is missing.
+      - name: Check the IPA password of a public fork build
+        if: github.repository == 'Taala2/bcd-personal' && !github.event.repository.private
+        shell: bash
+        env:
+          IPA_PASSWORD: ${{ secrets.IPA_PASSWORD }}
+        run: test -n "${IPA_PASSWORD:-}" || { echo "::error::the repository is public and the IPA_PASSWORD secret is not set"; exit 1; }
+
       - uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -4213,14 +4222,39 @@ jobs:
             ls -l "$f"
           done
 
+      # A public fork's artifacts can be downloaded by anyone signed in to GitHub, and handing the IPA on is not settled
+      # (HANDOFF.md). So there both IPAs are kept only encrypted with the IPA_PASSWORD secret, which the owner sets; without
+      # it the build stops here rather than upload them in the clear. Each file is decrypted again and compared before the
+      # plain copy is removed. On the owner's machine:
+      #   openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -in X.ipa.enc -out X.ipa
+      - name: Encrypt both unsigned IPAs (public fork build)
+        if: github.repository == 'Taala2/bcd-personal' && !github.event.repository.private
+        shell: bash
+        env:
+          IPA_PASSWORD: ${{ secrets.IPA_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "${IPA_PASSWORD:-}" || { echo "::error::the repository is public and the IPA_PASSWORD secret is not set: no IPA is uploaded"; exit 1; }
+          openssl version
+          for name in Madeira Madeira2; do
+            f="build-out/${name}-0.1.${{ steps.bn.outputs.n }}-unsigned.ipa"
+            openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -salt -in "$f" -out "$f.enc" -pass env:IPA_PASSWORD
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 -in "$f.enc" -out "$f.check" -pass env:IPA_PASSWORD
+            cmp -s "$f" "$f.check" || { echo "::error::$f.enc does not decrypt to the IPA"; exit 1; }
+            rm -f "$f" "$f.check"
+            ls -l "$f.enc"
+          done
+          if ls build-out/*-unsigned.ipa >/dev/null 2>&1; then echo "::error::a plain IPA is still in build-out"; exit 1; fi
+
       - name: Keep both unsigned IPAs as a workflow artifact (fork build)
         if: github.repository == 'Taala2/bcd-personal'
         uses: actions/upload-artifact@v4
         with:
-          name: madeira-unsigned-ipas-0.1.${{ steps.bn.outputs.n }}
+          name: madeira-unsigned-ipas-0.1.${{ steps.bn.outputs.n }}${{ !github.event.repository.private && '-encrypted' || '' }}
+          # The plain IPAs in a private repository; only the .ipa.enc files in a public one (the step above removed the plain ones).
           path: |
-            build-out/Madeira-0.1.${{ steps.bn.outputs.n }}-unsigned.ipa
-            build-out/Madeira2-0.1.${{ steps.bn.outputs.n }}-unsigned.ipa
+            build-out/Madeira-0.1.${{ steps.bn.outputs.n }}-unsigned.ipa*
+            build-out/Madeira2-0.1.${{ steps.bn.outputs.n }}-unsigned.ipa*
           if-no-files-found: error
           retention-days: 3
           compression-level: 0

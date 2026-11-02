@@ -32417,6 +32417,44 @@ static void ios_ntfail_map( const char *api, NTSTATUS status, HANDLE handle, HAN
                      (unsigned long long)(ULONG_PTR)handle, offset ? (unsigned long long)offset->QuadPart : 0, ext );
 }
 
+/* madeira-bcd personal [wasm-guard-trim]: env.MADEIRA_WASM_GUARD_TRIM = 1 (a game's file; off by default).
+ * V8 8.5 (NW.js 0.48, Chromium 85) reserves 10 GB for every WebAssembly.Memory on a 64-bit build, whatever
+ * the flags: 2 GB of guard below the memory and 8 GB from its start (src/objects/backing-store.cc:
+ * kUseGuardRegions, kNegativeGuardSize, kFullGuardSize). Internship [demo] (build 627, 2026-11-02 00:23)
+ * got one; the next 64 from the renderer's main thread and its worker failed (largest gap 6144 MB) and the
+ * loading screen never ended. Only after every placement failed, a reserve-only PAGE_NOACCESS request of
+ * exactly 10 GB is given 6 GB, else 4 GB: the 2 GB guard below plus 4 or 2 GB from the start. V8 commits
+ * the memory from the start and grows it in place, so a memory up to that size works as before; only an
+ * out-of-bounds access past it no longer lands in the guard. Logged as [wasm-guard-trim]. */
+static NTSTATUS ios_wasm_guard_trim( ULONG type, ULONG protect, SIZE_T want, void **out, SIZE_T *out_size )
+{
+    static const SIZE_T sizes[] = { 0x180000000ull, 0x100000000ull };
+    static unsigned trim_logs;
+    const char *e = getenv( "MADEIRA_WASM_GUARD_TRIM" );
+    unsigned i;
+
+    if (!e || e[0] != '1' || e[1]) return STATUS_NO_MEMORY;
+    if (want != 0x280000000ull || type != MEM_RESERVE || protect != PAGE_NOACCESS) return STATUS_NO_MEMORY;
+    for (i = 0; i < sizeof(sizes) / sizeof(sizes[0]); i++)
+    {
+        void *p = NULL;
+        SIZE_T s = sizes[i];
+
+        if (!allocate_virtual_memory( &p, &s, type, protect, 0, 0, 0, 0 ))
+        {
+            if (trim_logs++ < 32)
+                dprintf( 2, "[wasm-guard-trim] personal 10240 MB reserve found no hole: gave %lu MB at %p "
+                            "(MADEIRA_WASM_GUARD_TRIM)\n", (unsigned long)(s >> 20), p );
+            *out = p;
+            *out_size = s;
+            return STATUS_SUCCESS;
+        }
+    }
+    if (trim_logs++ < 32)
+        dprintf( 2, "[wasm-guard-trim] personal 10240 MB reserve: no 6144 or 4096 MB hole either\n" );
+    return STATUS_NO_MEMORY;
+}
+
 /* madeira-bcd (round 624, agent E1 S2; BeamNG.drive PZFK31): DECOMMIT AND RECOMMIT INSIDE A SOFT POOL.
  *
  * A soft pool (ios_soft) is address space handed to PartitionAlloc with no view behind it; a commit there is materialised by an
@@ -32499,44 +32537,6 @@ static int ios_soft_decommit( char *base, SIZE_T size )
         dprintf( 2, "[soft-pool] decommit 0x%llx+0x%lx in soft 0x%llx (zeroed, kept; round 624)\n",
                  (unsigned long long)start, (unsigned long)size, (unsigned long long)ios_soft[si].base );
     return 1;
-}
-
-/* madeira-bcd personal [wasm-guard-trim]: env.MADEIRA_WASM_GUARD_TRIM = 1 (a game's file; off by default).
- * V8 8.5 (NW.js 0.48, Chromium 85) reserves 10 GB for every WebAssembly.Memory on a 64-bit build, whatever
- * the flags: 2 GB of guard below the memory and 8 GB from its start (src/objects/backing-store.cc:
- * kUseGuardRegions, kNegativeGuardSize, kFullGuardSize). Internship [demo] (build 627, 2026-11-02 00:23)
- * got one; the next 64 from the renderer's main thread and its worker failed (largest gap 6144 MB) and the
- * loading screen never ended. Only after every placement failed, a reserve-only PAGE_NOACCESS request of
- * exactly 10 GB is given 6 GB, else 4 GB: the 2 GB guard below plus 4 or 2 GB from the start. V8 commits
- * the memory from the start and grows it in place, so a memory up to that size works as before; only an
- * out-of-bounds access past it no longer lands in the guard. Logged as [wasm-guard-trim]. */
-static NTSTATUS ios_wasm_guard_trim( ULONG type, ULONG protect, SIZE_T want, void **out, SIZE_T *out_size )
-{
-    static const SIZE_T sizes[] = { 0x180000000ull, 0x100000000ull };
-    static unsigned trim_logs;
-    const char *e = getenv( "MADEIRA_WASM_GUARD_TRIM" );
-    unsigned i;
-
-    if (!e || e[0] != '1' || e[1]) return STATUS_NO_MEMORY;
-    if (want != 0x280000000ull || type != MEM_RESERVE || protect != PAGE_NOACCESS) return STATUS_NO_MEMORY;
-    for (i = 0; i < sizeof(sizes) / sizeof(sizes[0]); i++)
-    {
-        void *p = NULL;
-        SIZE_T s = sizes[i];
-
-        if (!allocate_virtual_memory( &p, &s, type, protect, 0, 0, 0, 0 ))
-        {
-            if (trim_logs++ < 32)
-                dprintf( 2, "[wasm-guard-trim] personal 10240 MB reserve found no hole: gave %lu MB at %p "
-                            "(MADEIRA_WASM_GUARD_TRIM)\n", (unsigned long)(s >> 20), p );
-            *out = p;
-            *out_size = s;
-            return STATUS_SUCCESS;
-        }
-    }
-    if (trim_logs++ < 32)
-        dprintf( 2, "[wasm-guard-trim] personal 10240 MB reserve: no 6144 or 4096 MB hole either\n" );
-    return STATUS_NO_MEMORY;
 }
 
 static inline __attribute__((always_inline)) NTSTATUS ios_nt_impl_NtAllocateVirtualMemory( HANDLE process, PVOID *ret, ULONG_PTR zero_bits,

@@ -97,6 +97,11 @@ jobs:
       - name: Check online recommended settings
         run: python3 tests/host/check-remote-recommendations.py --require-swift
 
+      # madeira-bcd personal: recommended/personal-recommendations.json, the fork's own rules,
+      # asked before the list in use (NW.js games: the lines Internship [demo] ran with).
+      - name: Check personal recommended settings
+        run: python3 tests/host/check-personal-recommendations.py --require-swift
+
       # madeira-bcd: auto-tune (docs/AUTO-TUNE.md): off changes nothing; its hooks, rules,
       # fixtures, engine and app side.
       - name: Check auto-tune

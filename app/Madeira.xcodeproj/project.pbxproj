@@ -316,6 +316,7 @@
 		A1000BA0 /* GameRecommendationsList.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000BA0 /* GameRecommendationsList.swift */; };
 		A1000BA1 /* GameRecommendationsSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000BA1 /* GameRecommendationsSource.swift */; };
 		A1000BA2 /* recommendations.json in Resources */ = {isa = PBXBuildFile; fileRef = A2000BA2 /* recommendations.json */; };
+		A1000BA3 /* personal-recommendations.json in Resources */ = {isa = PBXBuildFile; fileRef = A2000BA3 /* personal-recommendations.json */; };
 		A1000915 /* AutoTune.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000915 /* AutoTune.swift */; };
 		A1000916 /* AutoTuneCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000916 /* AutoTuneCore.swift */; };
 		A1000917 /* AutoTuneViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000917 /* AutoTuneViews.swift */; };
@@ -743,6 +744,7 @@
 		A2000BA0 /* GameRecommendationsList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameRecommendationsList.swift; sourceTree = "<group>"; };
 		A2000BA1 /* GameRecommendationsSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameRecommendationsSource.swift; sourceTree = "<group>"; };
 		A2000BA2 /* recommendations.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = recommendations.json; path = ../recommended/recommendations.json; sourceTree = SOURCE_ROOT; };
+		A2000BA3 /* personal-recommendations.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = personal-recommendations.json; path = ../recommended/personal-recommendations.json; sourceTree = SOURCE_ROOT; };
 		A2000915 /* AutoTune.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoTune.swift; sourceTree = "<group>"; };
 		A2000916 /* AutoTuneCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoTuneCore.swift; sourceTree = "<group>"; };
 		A2000917 /* AutoTuneViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoTuneViews.swift; sourceTree = "<group>"; };
@@ -1137,6 +1139,7 @@
 				A2000BA0 /* GameRecommendationsList.swift */,
 				A2000BA1 /* GameRecommendationsSource.swift */,
 				A2000BA2 /* recommendations.json */,
+				A2000BA3 /* personal-recommendations.json */,
 				A2000915 /* AutoTune.swift */,
 				A2000916 /* AutoTuneCore.swift */,
 				A2000917 /* AutoTuneViews.swift */,
@@ -1410,6 +1413,7 @@
 				A1000040 /* prefix-template.tar.gz in Resources */,
 				A1000094 /* cacert.pem in Resources */,
 				A1000BA2 /* recommendations.json in Resources */,
+				A1000BA3 /* personal-recommendations.json in Resources */,
 				A1000910 /* Assets.xcassets in Resources */,
 				B1000004 /* madeira-jit.js in Resources */,
 				B1000051 /* Madeira JIT.shortcut in Resources */,

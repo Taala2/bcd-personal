@@ -172,7 +172,9 @@ struct RecommendationsFile: Equatable {
     var rules: [RecommendationRule]
 
     /// Reads the file. Throws `.format` for anything that is not exactly this layout.
-    static func parse(_ data: Data) throws -> RecommendationsFile {
+    /// madeira-bcd personal: `requireStandard` false for the fork's own list (GameRecommendations.personal),
+    /// which holds no standard rule.
+    static func parse(_ data: Data, requireStandard: Bool = true) throws -> RecommendationsFile {
         let root: Any
         do {
             root = try JSONSerialization.jsonObject(with: data, options: [])
@@ -189,7 +191,7 @@ struct RecommendationsFile: Equatable {
         }
         let file = RecommendationsFile(format: format, version: try JSONRead.int(top["version"], "version"),
                                        generated: try JSONRead.string(top["generated"], "generated"), rules: rules)
-        try file.checkLayout()
+        try file.checkLayout(requireStandard: requireStandard)
         return file
     }
 
@@ -269,7 +271,7 @@ struct RecommendationsFile: Equatable {
     // MARK: Checks
 
     /// The layout's own rules, whoever wrote the file (the built-in one too).
-    func checkLayout() throws {
+    func checkLayout(requireStandard: Bool = true) throws {
         func fail(_ why: String) -> RecommendationsError { .format(why) }
         guard version >= 1 else { throw fail("version \(version)") }
         guard generated.range(of: #"^\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) != nil else {
@@ -305,7 +307,7 @@ struct RecommendationsFile: Equatable {
             try Self.checkSwitches(rule.switches, path + ".switches")
             guard rule.notes.allSatisfy({ JSONRead.printable($0) }) else { throw fail("\(path): a note has control characters") }
         }
-        guard ids.contains(GameRecommendations.standardID) else { throw fail("no rule \"\(GameRecommendations.standardID)\"") }
+        guard !requireStandard || ids.contains(GameRecommendations.standardID) else { throw fail("no rule \"\(GameRecommendations.standardID)\"") }
     }
 
     private static func checkMatch(_ match: GameRecommendationMatch, _ path: String) throws {

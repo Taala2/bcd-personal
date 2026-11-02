@@ -1998,6 +1998,23 @@ static void *wine_process_thread(void *arg) {
                     LOG("game config env: %{public}s=%{public}s", k.UTF8String, v.UTF8String);
                     fprintf(stderr, "[madeira-env] game %s=%s\n", k.UTF8String, v.UTF8String);
                 }
+                {   /* madeira-bcd personal (2026-11-02): three switches on for every game whose bcd.cfg and own file name none of them
+                     * (env.NAME = 0 there turns one off). Each acts only where the game would otherwise fail: TLS_CLEAR_OWN_PROCESS keeps
+                     * TlsFree inside the calling program, as on Windows (the session's programs share one thread list); ANON_LDADDAL64
+                     * emulates a 64-bit LDADDAL that faults on an anonymous alias (else [mach_exc] UNHANDLED); WASM_GUARD_TRIM answers a
+                     * failed 10 GB V8 WebAssembly reserve with 6 or 4 GB above the image window (else the failure). Internship [demo],
+                     * build 627, needed all three. */
+                    static const char *const personal_defaults[] = {
+                        "MADEIRA_TLS_CLEAR_OWN_PROCESS", "MADEIRA_ANON_LDADDAL64", "MADEIRA_WASM_GUARD_TRIM",
+                    };
+                    for (size_t i = 0; i < sizeof(personal_defaults) / sizeof(personal_defaults[0]); i++) {
+                        const char *name = personal_defaults[i];
+                        if (getenv(name) || madeira_env_is_locked(name)) continue;
+                        setenv(name, "1", 1);
+                        fprintf(stderr, "[personal-default] %s=1 (no line for it in bcd.cfg or the game's file; env.%s = 0 turns it off)\n",
+                                name, name);
+                    }
+                }
                 {   /* madeira-bcd (round 624, agent R: the Epic GTA V / RDR2 starts 7Z8VKR, TV6H06): env.MADEIRA_STEAM_IDENTITY = none from the
                      * game's OWN file. The check near the start of this function runs before these lines are exported, so a key from the game's
                      * file was never seen there (0 of 2,182 logs printed the line below). Same effect as that check; it still works for a key

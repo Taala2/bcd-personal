@@ -1,0 +1,158 @@
+{
+  "format": 1,
+  "version": 1,
+  "generated": "2026-11-02",
+  "rules": [
+    {
+      "id": "personal-nwjs-game-exe",
+      "title": "NW.js games (Game.exe), personal",
+      "version": 1,
+      "match": {
+        "programs": [
+          {
+            "name": "game.exe",
+            "beside": "nw_elf.dll"
+          },
+          {
+            "name": "game.exe",
+            "beside": "nw.dll"
+          }
+        ]
+      },
+      "config": [
+        "# Personal recommended settings for NW.js games (Game.exe): RPG Maker MV/MZ and the like.",
+        "# Reset to Recommended, at the bottom of the game's settings, brings them back.",
+        "env.MADEIRA_EC_HOOK_TRACE = 0",
+        "env.MADEIRA_TLS_CLEAR_OWN_PROCESS = 1",
+        "env.MADEIRA_X64_IMAGE_NOCOPY = 1",
+        "env.MADEIRA_X64_NOCOPY_DATAIMP = 1",
+        "env.MADEIRA_ANON_LDADDAL64 = 1",
+        "env.MADEIRA_WASM_GUARD_TRIM = 1",
+        "env.MADEIRA_THREAD_STACK_SPILL = 1",
+        "pool-split = 1",
+        "pool-low = 1",
+        {
+          "line": "env.MADEIRA_GUEST_LOG = all",
+          "minBuild": 598
+        },
+        {
+          "line": "env.MADEIRA_GUEST_LOG_LIMIT = 400",
+          "minBuild": 598
+        }
+      ],
+      "notes": [
+        "Internship[demo] (RPG Maker MZ on NW.js 0.48), build 627, iPhone16,1, iOS 27.0.1, 2026-11-02: about 6 minutes at 57-60 fps with these lines. Each one answers a cause seen in the device logs of runs 3-17: TLS_CLEAR_OWN_PROCESS the Chromium 'Check failed: current' fatals from cross-process TlsFree, X64_IMAGE_NOCOPY the pool EXHAUSTED on per-child copies of nw.dll, ANON_LDADDAL64 the 64-bit LDADDAL on an anonymous alias, WASM_GUARD_TRIM V8's 10 GB WebAssembly reservations, pool-split and pool-low the anonymous RWX pool exhaustion (wasm code commit). THREAD_STACK_SPILL and DATAIMP were in the working config; that each is needed is not shown.",
+        "Upstream's nwjs-game-exe sets MADEIRA_CHILD_ARGS, which reaches --type=crashpad-handler children and stops the game at start (runs 1-2); this rule leaves it out.",
+        "Tested on one game only."
+      ]
+    },
+    {
+      "id": "personal-nwjs-any",
+      "title": "NW.js games (any program beside nw.dll), personal",
+      "version": 1,
+      "match": {
+        "programs": [
+          {
+            "name": "*.exe",
+            "beside": "nw_elf.dll"
+          },
+          {
+            "name": "*.exe",
+            "beside": "nw.dll"
+          }
+        ]
+      },
+      "config": [
+        "# Personal recommended settings for NW.js games whose program is not Game.exe.",
+        "# Reset to Recommended, at the bottom of the game's settings, brings them back.",
+        "env.MADEIRA_EC_HOOK_TRACE = 0",
+        "env.MADEIRA_TLS_CLEAR_OWN_PROCESS = 1",
+        "env.MADEIRA_X64_IMAGE_NOCOPY = 1",
+        "env.MADEIRA_X64_NOCOPY_DATAIMP = 1",
+        "env.MADEIRA_ANON_LDADDAL64 = 1",
+        "env.MADEIRA_WASM_GUARD_TRIM = 1",
+        "env.MADEIRA_THREAD_STACK_SPILL = 1",
+        "pool-split = 1",
+        "pool-low = 1",
+        {
+          "line": "env.MADEIRA_GUEST_LOG = all",
+          "minBuild": 598
+        },
+        {
+          "line": "env.MADEIRA_GUEST_LOG_LIMIT = 400",
+          "minBuild": 598
+        }
+      ],
+      "notes": [
+        "The lines of personal-nwjs-game-exe for an NW.js game with another program name. Asked after BCD's list, so a game with a rule there (CrossCode) keeps it. Not tried on a device."
+      ]
+    },
+    {
+      "id": "personal-cef",
+      "title": "CEF games (any program beside libcef.dll), personal",
+      "version": 1,
+      "match": {
+        "programs": [
+          {
+            "name": "*.exe",
+            "beside": "libcef.dll"
+          }
+        ]
+      },
+      "config": [
+        "# Personal recommended settings for games built on the Chromium Embedded Framework.",
+        "# Reset to Recommended, at the bottom of the game's settings, brings them back.",
+        "env.MADEIRA_EC_HOOK_TRACE = 0",
+        "env.MADEIRA_X64_IMAGE_NOCOPY = 1",
+        "env.MADEIRA_X64_NOCOPY_DATAIMP = 1",
+        "pool-split = 1",
+        "pool-low = 1",
+        {
+          "line": "env.MADEIRA_GUEST_LOG = all",
+          "minBuild": 598
+        },
+        {
+          "line": "env.MADEIRA_GUEST_LOG_LIMIT = 400",
+          "minBuild": 598
+        }
+      ],
+      "notes": [
+        "Hypothesis from Internship [demo] (NW.js), not tried on a device: CEF starts the same Chromium child processes (gpu, renderer, utilities), each mapping libcef.dll (100 MB and more), which ran the JIT pool out for nw.dll; X64_IMAGE_NOCOPY and DATAIMP answered that, pool-split and pool-low the anonymous RWX exhaustion of V8's code. The three switches every game gets (TLS_CLEAR_OWN_PROCESS, ANON_LDADDAL64, WASM_GUARD_TRIM) need no line."
+      ]
+    },
+    {
+      "id": "personal-electron",
+      "title": "Electron games (any program beside chrome_100_percent.pak), personal",
+      "version": 1,
+      "match": {
+        "programs": [
+          {
+            "name": "*.exe",
+            "beside": "chrome_100_percent.pak",
+            "notBeside": "libcef.dll"
+          }
+        ]
+      },
+      "config": [
+        "# Personal recommended settings for games built on Electron.",
+        "# Reset to Recommended, at the bottom of the game's settings, brings them back.",
+        "env.MADEIRA_EC_HOOK_TRACE = 0",
+        "env.MADEIRA_X64_IMAGE_NOCOPY = 1",
+        "env.MADEIRA_X64_NOCOPY_DATAIMP = 1",
+        "pool-split = 1",
+        "pool-low = 1",
+        {
+          "line": "env.MADEIRA_GUEST_LOG = all",
+          "minBuild": 598
+        },
+        {
+          "line": "env.MADEIRA_GUEST_LOG_LIMIT = 400",
+          "minBuild": 598
+        }
+      ],
+      "notes": [
+        "The CEF rule's hypothesis for Electron, whose program is itself the Chromium build (100 MB and more), not tried on a device. Recognised by chrome_100_percent.pak beside the program; NW.js and CEF folders are matched by the rules before this one."
+      ]
+    }
+  ]
+}

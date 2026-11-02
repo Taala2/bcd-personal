@@ -149,10 +149,40 @@ enum GameRecommendations {
         lock.unlock()
     }
 
+    /// madeira-bcd personal: the fork's own rules, recommended/personal-recommendations.json (a bundle
+    /// resource of this fork only). They are looked at before the list in use, so a game family this
+    /// fork fixed gets its lines while BCD's signed downloads keep coming in. The file has the list's
+    /// format without a standard rule; a list that does not read, or holds one, is not used.
+    static var personalURL: URL? = Bundle.main.url(forResource: "personal-recommendations", withExtension: "json")
+    private static var personalLoaded: GameRecommendationList?
+
+    static var personal: GameRecommendationList {
+        lock.lock()
+        defer { lock.unlock() }
+        if let list = personalLoaded { return list }
+        var list = GameRecommendationList.empty
+        if let url = personalURL, let data = try? Data(contentsOf: url) {
+            do {
+                let file = try RecommendationsFile.parse(data, requireStandard: false)
+                if file.rules.contains(where: { $0.id == standardID }) {
+                    LogStore.shared.log("[recs] personal list not used: it has a standard rule", level: .error)
+                } else {
+                    list = file.list(build: RecommendationsStore.build, origin: .builtIn)
+                    LogStore.shared.log("[recs] personal list v\(file.version) (\(file.generated)), \(list.rules.count) rules, checked first")
+                }
+            } catch {
+                LogStore.shared.log("[recs] personal list not used: \(error)", level: .error)
+            }
+        }
+        personalLoaded = list
+        return list
+    }
+
     /// The next use reads the files again, as at an app start (the host checks).
     static func reload() {
         lock.lock()
         loaded = nil
+        personalLoaded = nil
         lock.unlock()
     }
 
@@ -170,7 +200,27 @@ enum GameRecommendations {
     /// - steamAppID: set for a library Steam game.
     /// - fileExists: whether a C:\ path exists (GTA5_Enhanced.exe beside a program).
     static func match(windowsPath: String, steamAppID: Int?, fileExists: (String) -> Bool) -> GameRecommendation? {
-        active.match(windowsPath: windowsPath, steamAppID: steamAppID, fileExists: fileExists)
+        // madeira-bcd personal: the fork's own rules first, its engine rules after the list in use
+        personal.match(windowsPath: windowsPath, steamAppID: steamAppID, fileExists: fileExists)
+            ?? active.match(windowsPath: windowsPath, steamAppID: steamAppID, fileExists: fileExists)
+            ?? personalEngineMatch(windowsPath: windowsPath, fileExists: fileExists)
+    }
+
+    /// madeira-bcd personal: the program name "*.exe" in a personal rule stands for any program with its `beside` file
+    /// (an engine's DLL) in its folder. Asked after the list in use, so a game with a rule of its own keeps that rule.
+    static func personalEngineMatch(windowsPath: String, fileExists: (String) -> Bool) -> GameRecommendation? {
+        let path = windowsPath.replacingOccurrences(of: "/", with: "\\")
+        guard path.lowercased().hasSuffix(".exe"), let cut = path.lastIndex(of: "\\") else { return nil }
+        let folder = String(path[..<cut])
+        for rule in personal.rules {
+            guard let match = rule.match else { continue }
+            for program in match.programs where program.name == "*.exe" {
+                guard let beside = program.beside, fileExists(folder + "\\" + beside) else { continue }
+                if let notBeside = program.notBeside, fileExists(folder + "\\" + notBeside) { continue }
+                return rule.recommendation
+            }
+        }
+        return nil
     }
 
     /// The folder name right under steamapps\common, lowercased, or nil.

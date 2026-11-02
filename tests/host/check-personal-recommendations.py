@@ -82,9 +82,15 @@ for rid, text in lines:
     m = re.fullmatch(r'([A-Za-z0-9_.-]+) = (.+)', text)
     if not m or text.strip() != text or len(text) > 1024:
         bad.append('%s: %r is not "key = value"' % (rid, text))
+    elif m.group(1).startswith('env.RENPY_'):
+        continue   # Ren'Py's own variables (the game reads them, BCD does not)
     elif m.group(1) not in catalog or catalog[m.group(1)] == 'App & front end':
         bad.append('%s: %s is not a game setting of the catalog' % (rid, m.group(1)))
-check('every line is a comment or a catalog game setting', not bad, '; '.join(bad))
+check('every line is a comment, a catalog game setting or a Ren\'Py variable', not bad, '; '.join(bad))
+renpy = next((r for r in doc['rules'] if r['id'] == 'personal-renpy'), None)
+check('personal-renpy: any program beside the renpy folder skips the presplash and draws through ANGLE',
+      renpy is not None and renpy['match'] == {'programs': [{'name': '*.exe', 'beside': 'renpy'}]}
+      and 'env.RENPY_LESS_UPDATES = 1' in renpy['config'] and 'env.RENPY_RENDERER = angle2' in renpy['config'])
 check('no rule sets MADEIRA_CHILD_ARGS (it reaches --type=crashpad-handler children)',
       not any('MADEIRA_CHILD_ARGS' in text for _, text in lines))
 nw = next((r for r in doc['rules'] if r['id'] == 'personal-nwjs-game-exe'), None)
@@ -223,6 +229,8 @@ check(G.match(windowsPath: foo, steamAppID: nil, fileExists: besideElectron)?.id
 check(G.match(windowsPath: foo, steamAppID: nil, fileExists: { besideCEF($0) || besideElectron($0) })?.id == "personal-cef",
       "a CEF folder with chrome_100_percent.pak stays CEF")
 check(G.match(windowsPath: #"C:\Games\Foo"#, steamAppID: nil, fileExists: besideNW)?.id.hasPrefix("personal-") != true, "a folder is not a program")
+check(G.match(windowsPath: #"C:\Games\LogoutDenied-v0.6.Public-pc\LogoutDenied.exe"#, steamAppID: nil,
+              fileExists: { $0.lowercased().hasSuffix(#"\renpy"#) })?.id == "personal-renpy", "a Ren'Py program beside its renpy folder")
 check(G.active.rules.contains { $0.recommendation.id == "nwjs-game-exe" }, "the list in use keeps upstream's rule")
 check(LogStore.shared.lines.contains { $0.0.hasPrefix("[recs] personal list v") }, "one log line says the personal list is used")
 

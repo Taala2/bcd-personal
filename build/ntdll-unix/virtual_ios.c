@@ -19785,16 +19785,25 @@ static inline int mprotect_exec( void *base, size_t size, int unix_prot )
                     unsigned int reloc_rva = *(unsigned int *)(rw_image + pe_off + 0xB0);
                     unsigned int reloc_sz  = *(unsigned int *)(rw_image + pe_off + 0xB4);
 
+                    /* madeira-bcd personal [reloc-bounds]: a table that does not fit the image is not applied (lucieneslife's
+                     * Ren'Py launcher, relocations stripped, points its directory into .rsrc: the fixups wrote far past the
+                     * copy and the host faulted, taking the wineserver and every program down). */
+                    if (reloc_rva && reloc_sz && delta && ((size_t)reloc_rva > image_size || reloc_sz > image_size - reloc_rva))
+                    {
+                        ERR("iOS JIT:   [reloc-bounds] relocations RVA=0x%x size=0x%x past the image (0x%lx): not applied\n",
+                            reloc_rva, reloc_sz, (unsigned long)image_size);
+                        reloc_rva = reloc_sz = 0;
+                    }
                     if (reloc_rva && reloc_sz && delta)
                     {
                         char *reloc_data = rw_image + reloc_rva;
                         char *block = reloc_data;
-                        int fixup_count = 0;
+                        int fixup_count = 0, outside = 0;
 
                         ERR("iOS JIT:   relocations: RVA=0x%x size=0x%x delta=0x%lx\n",
                             reloc_rva, reloc_sz, (long)delta);
 
-                        while (block < reloc_data + reloc_sz)
+                        while (block + 8 <= reloc_data + reloc_sz)
                         {
                             unsigned int block_rva  = *(unsigned int *)block;
                             unsigned int block_size = *(unsigned int *)(block + 4);
@@ -19802,6 +19811,13 @@ static inline int mprotect_exec( void *base, size_t size, int unix_prot )
                             unsigned short *entries;
 
                             if (!block_size || block_size < 8) break;
+                            /* madeira-bcd personal [reloc-bounds]: a block past the table, or one for a page past the image,
+                             * ends the walk */
+                            if (block_size > (size_t)(reloc_data + reloc_sz - block) || (size_t)block_rva >= image_size)
+                            {
+                                outside++;
+                                break;
+                            }
 
                             num_entries = (block_size - 8) / 2;
                             entries = (unsigned short *)(block + 8);
@@ -19813,6 +19829,11 @@ static inline int mprotect_exec( void *base, size_t size, int unix_prot )
 
                                 if (type == 0) continue;
 
+                                if (type == 10 && (size_t)block_rva + off + 8 > image_size)  /* madeira-bcd personal [reloc-bounds] */
+                                {
+                                    outside++;
+                                    continue;
+                                }
                                 if (type == 10)  /* IMAGE_REL_BASED_DIR64 */
                                 {
                                     uint64_t *fixup = (uint64_t *)(rw_image + block_rva + off);
@@ -19846,6 +19867,9 @@ static inline int mprotect_exec( void *base, size_t size, int unix_prot )
 
                         ERR("iOS JIT:   applied %d DIR64 fixups (delta=0x%lx)\n",
                             fixup_count, (long)delta);
+                        if (outside)
+                            ERR("iOS JIT:   [reloc-bounds] %d relocation block(s) or fixup(s) past the image (0x%lx) skipped\n",
+                                outside, (unsigned long)image_size);
                     }
 
                     /* Store relocation info for later IAT sync re-application */

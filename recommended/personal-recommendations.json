@@ -121,6 +121,38 @@
       ]
     },
     {
+      "id": "personal-renpy",
+      "title": "Ren'Py games (any program beside the renpy folder), personal",
+      "version": 1,
+      "match": {
+        "programs": [
+          {
+            "name": "*.exe",
+            "beside": "renpy"
+          }
+        ]
+      },
+      "config": [
+        "# Personal recommended settings for Ren'Py games.",
+        "# Reset to Recommended, at the bottom of the game's settings, brings them back.",
+        "env.MADEIRA_EC_HOOK_TRACE = 0",
+        "env.RENPY_LESS_UPDATES = 1",
+        "env.RENPY_RENDERER = angle2",
+        {
+          "line": "env.MADEIRA_GUEST_LOG = all",
+          "minBuild": 598
+        },
+        {
+          "line": "env.MADEIRA_GUEST_LOG_LIMIT = 400",
+          "minBuild": 598
+        }
+      ],
+      "notes": [
+        "LogoutDenied, Secret Glory Hole (Ren'Py 8, Python 3.12), build 627, iPhone16,1, 2026-11-02: renpy.display.presplash.start opens an SDL window that needs an OpenGL pixel format; BCD's opengl32.dll is the GL-absent stub, so it fails with 'No matching GL pixel format available' and the game exits 4 s after the start.",
+        "Ren'Py's own variables (renpy/display/presplash.py, core.py): RENPY_LESS_UPDATES skips the presplash (and transitions between scenes); RENPY_RENDERER = angle2 draws through the ANGLE libEGL.dll the game ships, which runs on Direct3D 11, with Ren'Py's software renderer after it. Not tried on a device."
+      ]
+    },
+    {
       "id": "personal-electron",
       "title": "Electron games (any program beside chrome_100_percent.pak), personal",
       "version": 1,

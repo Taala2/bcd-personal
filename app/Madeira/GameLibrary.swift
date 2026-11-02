@@ -86,6 +86,9 @@ enum GameLibrary {
         "unitycrashhandler32.exe", "crashreportclient.exe", "crashpad_handler.exe",
         "dxsetup.exe", "installermessage.exe", "easyanticheat_setup.exe",
         "easyanticheat_eos_setup.exe", "cleanup.exe", "touchup.exe",
+        // madeira-bcd personal: Ren'Py's interpreter under lib\py3-windows-x86_64 was picked as the card's program over
+        // the game's own (SleeveShock, The Grand Butt Sex Hotel, build 627: python.exe with no script, exit 0, no window)
+        "python.exe", "pythonw.exe",
     ]
 
     static var driveC: URL? {

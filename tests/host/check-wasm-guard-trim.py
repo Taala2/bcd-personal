@@ -12,10 +12,12 @@ and changed nothing.
 
 Checks:
   - the helper, cut out of build/ntdll-unix/virtual_ios.c and compiled on the host with a stub
-    allocator over a model of free holes: unset or not exactly '1', another size, a commit or
+    allocator over a model of the address map: unset or not exactly '1', another size, a commit or
     another protection leave the request alone (the allocator is not called); on, 6 GB is given
-    unhinted where it fits, else 4 GB, and with neither the old failure stands with the output
-    untouched; at most 32 log lines;
+    at the first free 256 MB step from the image window's ceiling (0x73ffff0000), else 4 GB, never
+    unhinted, never below the ceiling or past 0x7c00000000 (the 13:59 and 14:00 runs got 4 GB inside
+    the window from the kernel's pick, and the next process could not map nw.dll); with no slot the
+    old failure stands with the output untouched; at most 32 log lines;
   - it is called on both failure paths: the kernel-pick reserve after the band census and before
     the gap probes, and the hinted reserve after its last unhinted retry, before sc_decided, whose
     success path hands the trimmed size back;
@@ -53,8 +55,9 @@ typedef unsigned int ULONG, NTSTATUS;
 #define STATUS_SUCCESS 0
 #define STATUS_NO_MEMORY 0xc0000017
 #define G 0x40000000ul
-static struct { ULONG_PTR lo, hi; } holes[8];
-static int nholes, calls, log_lines;
+static const ULONG_PTR ios_furniture_ceiling = 0x73ffff0000ul;
+static struct { ULONG_PTR lo, hi; } used[32];
+static int nused, calls, unhinted, log_lines;
 #define dprintf test_dprintf   /* stdio.h declares the real one */
 static int test_dprintf( int fd, const char *fmt, ... )
 {
@@ -68,20 +71,19 @@ static NTSTATUS allocate_virtual_memory( void **ret, SIZE_T *size_ptr, ULONG typ
                                          ULONG_PTR limit_low, ULONG_PTR limit_high,
                                          ULONG_PTR align, ULONG attributes )
 {
+    ULONG_PTR a = (ULONG_PTR)*ret, e = a + *size_ptr;
     calls++;
-    if (*ret || limit_low || limit_high || align || attributes) return 0xbad;
+    if (!a) { unhinted++; return 0xbad; }   /* the kernel's pick lands in the image window: never asked */
+    if (limit_low || limit_high || align || attributes) return 0xbad;
     if (type != MEM_RESERVE || protect != PAGE_NOACCESS) return 0xbad;
-    for (int i = 0; i < nholes; i++)
-        if (holes[i].hi - holes[i].lo >= *size_ptr)
-        {
-            *ret = (void *)holes[i].lo;
-            holes[i].lo += *size_ptr;
-            return STATUS_SUCCESS;
-        }
-    return STATUS_NO_MEMORY;
+    for (int i = 0; i < nused; i++)
+        if (a < used[i].hi && used[i].lo < e) return 0xc0000018;
+    used[nused].lo = a; used[nused++].hi = e;
+    return STATUS_SUCCESS;
 }
 ''' + helper + '\nstatic void end_game_session(void) { ' + reset + ' }\n' + r'''
 static int fails;
+static void occupy( ULONG_PTR lo, ULONG_PTR hi ) { used[nused].lo = lo; used[nused++].hi = hi; }
 static void expect( const char *what, const char *env, SIZE_T want, ULONG type, ULONG protect,
                     NTSTATUS want_st, ULONG_PTR want_at, SIZE_T want_size, int want_calls )
 {
@@ -89,7 +91,8 @@ static void expect( const char *what, const char *env, SIZE_T want, ULONG type, 
     if (env) setenv( "MADEIRA_WASM_GUARD_TRIM", env, 1 ); else unsetenv( "MADEIRA_WASM_GUARD_TRIM" );
     calls = 0;
     st = ios_wasm_guard_trim( type, protect, want, &p, &s );
-    if (st != want_st || (ULONG_PTR)p != want_at || s != want_size || calls != want_calls)
+    if (st != want_st || (ULONG_PTR)p != want_at || s != want_size || (want_calls >= 0 && calls != want_calls) || unhinted
+        || (!st && ((ULONG_PTR)p < ios_furniture_ceiling || (ULONG_PTR)p + s > 0x7c00000000ul)))
     {
         printf( "FAIL %s: st=%x at=%p size=%#lx calls=%d\n", what, st, p, s, calls );
         fails++;
@@ -99,11 +102,11 @@ static void expect( const char *what, const char *env, SIZE_T want, ULONG type, 
 int main( void )
 {
     const SIZE_T ten = 0x280000000ul;
-    /* the device's largest gap was 6144 MB, then two 4 GB holes */
-    holes[0].lo = 0x767fff0000ul; holes[0].hi = 0x7800000000ul;
-    holes[1].lo = 0x7900000000ul; holes[1].hi = 0x7a00000000ul;
-    holes[2].lo = 0x7b00000000ul; holes[2].hi = 0x7c00000000ul;
-    nholes = 3;
+    /* the 14:00 run's map above the window: the main thread's 10 GB, two isolate cages; below the
+     * ceiling everything counts as the image window and must stay free */
+    occupy( 0x75265e0000ul, 0x77a65e0000ul );
+    occupy( 0x7800000000ul, 0x7900000000ul );
+    occupy( 0x7a00000000ul, 0x7b00000000ul );
     const char *off[] = { "", "0", "true", "yes", "2", "01", "1x" };
     expect( "unset", NULL, ten, MEM_RESERVE, PAGE_NOACCESS, UNTOUCHED, 0 );
     for (unsigned i = 0; i < sizeof off / sizeof *off; i++)
@@ -114,20 +117,25 @@ int main( void )
     expect( "a commit", "1", ten, MEM_RESERVE | MEM_COMMIT, PAGE_NOACCESS, UNTOUCHED, 0 );
     expect( "a commit alone", "1", ten, MEM_COMMIT, PAGE_NOACCESS, UNTOUCHED, 0 );
     expect( "read-write", "1", ten, MEM_RESERVE, PAGE_READWRITE, UNTOUCHED, 0 );
-    /* on: 6 GB in the 6 GB gap, then 4 GB in each 4 GB hole, then nothing */
-    expect( "6 GB", "1", ten, MEM_RESERVE, PAGE_NOACCESS, STATUS_SUCCESS, 0x767fff0000ul, 6 * G, 1 );
-    expect( "4 GB", "1", ten, MEM_RESERVE, PAGE_NOACCESS, STATUS_SUCCESS, 0x7900000000ul, 4 * G, 2 );
-    expect( "4 GB again", "1", ten, MEM_RESERVE, PAGE_NOACCESS, STATUS_SUCCESS, 0x7b00000000ul, 4 * G, 2 );
-    expect( "no hole: the old failure", "1", ten, MEM_RESERVE, PAGE_NOACCESS, UNTOUCHED, 2 );
+    /* on: no 6 GB slot, so 4 GB at the ceiling, then in each free 4 GB band, then nothing */
+    expect( "4 GB at the ceiling", "1", ten, MEM_RESERVE, PAGE_NOACCESS, STATUS_SUCCESS, 0x73ffff0000ul, 4 * G, -1 );
+    expect( "4 GB in the band between the cages", "1", ten, MEM_RESERVE, PAGE_NOACCESS, STATUS_SUCCESS, 0x7900000000ul, 4 * G, -1 );
+    expect( "4 GB below the emulator's arena", "1", ten, MEM_RESERVE, PAGE_NOACCESS, STATUS_SUCCESS, 0x7b00000000ul, 4 * G, -1 );
+    expect( "no slot: the old failure", "1", ten, MEM_RESERVE, PAGE_NOACCESS, UNTOUCHED, -1 );
     /* the log is capped */
     for (int i = 0; i < 40; i++)
-        expect( "capped", "1", ten, MEM_RESERVE, PAGE_NOACCESS, UNTOUCHED, 2 );
+        expect( "capped", "1", ten, MEM_RESERVE, PAGE_NOACCESS, UNTOUCHED, -1 );
     if (log_lines != 32) { printf( "FAIL log lines=%d\n", log_lines ); fails++; }
+    /* the 13:53 run: a 6 GB gap below the cage at 0x7800000000 gets 6 GB, from a 256 MB step */
+    nused = 0;
+    occupy( 0x73ffff0000ul, 0x767fff0000ul );
+    occupy( 0x7800000000ul, 0x7c00000000ul );
+    expect( "6 GB first", "1", ten, MEM_RESERVE, PAGE_NOACCESS, STATUS_SUCCESS, 0x7680000000ul, 6 * G, -1 );
     /* the production session reset: a later game without the key keeps the old path */
     setenv( "MADEIRA_WASM_GUARD_TRIM", "1", 1 );
     end_game_session();
     if (getenv( "MADEIRA_WASM_GUARD_TRIM" )) { puts( "FAIL reset" ); fails++; }
-    holes[0].lo = 0x7000000000ul; holes[0].hi = 0x7200000000ul;
+    nused = 0;
     calls = 0;
     {
         void *p = (void *)0x1234; SIZE_T s = 0x5678;
@@ -157,6 +165,8 @@ assert hd.index('st2 = allocate_virtual_memory( &pick, &sz, type, protect, 0, 0,
     hd.index('st2 = ios_wasm_guard_trim( type, protect, *size_ptr, &pick, &sz );') < hd.index('sc_decided:')
 assert '*ret = pick;\n                    *size_ptr = sz;' in hd
 assert src.count('ios_wasm_guard_trim(') == 3, 'one definition and two call sites'
+assert 'for (a = ios_furniture_ceiling; a + sizes[i] <= 0x7c00000000ull; a = ((a >> 28) + 1) << 28)' in helper
+assert 'void *p = NULL;' not in helper, "the trimmed range is never placed by the kernel's pick"
 assert 'run: python3 tests/host/check-wasm-guard-trim.py' in (root / '.github/workflows/build-ipa.yml').read_text()
 cat = (root / 'app/Madeira/ConfigCatalog.generated.swift').read_text()
 assert ('ConfigOption(key: "env.MADEIRA_WASM_GUARD_TRIM", title: "Smaller reservation for web-engine WebAssembly memory", '

@@ -125,7 +125,8 @@ OVERLAY = {
                 "kind": "bool", "default": "0",
                 "note": "Default off. 1: a reserve-only 10 GB request that finds no hole (the V8 engine's WebAssembly memory "
                         "in NW.js and other Chromium 85 era games) gets 6 GB, else 4 GB: the 2 GB guard below the memory plus "
-                        "4 or 2 GB above its start. For a web-engine game stuck loading whose log shows size=0x280000000 "
+                        "4 or 2 GB above its start, placed only above the game's image window so later processes can still "
+                        "load their DLLs. For a web-engine game stuck loading whose log shows size=0x280000000 "
                         "refused (Internship [demo]). An out-of-bounds access past that size is no longer caught, so set it "
                         "per game. Logged as [wasm-guard-trim].",
                 "sources": ["build/ntdll-unix/virtual_ios.c"]},

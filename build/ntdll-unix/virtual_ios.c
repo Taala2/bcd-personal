@@ -32425,7 +32425,12 @@ static void ios_ntfail_map( const char *api, NTSTATUS status, HANDLE handle, HAN
  * loading screen never ended. Only after every placement failed, a reserve-only PAGE_NOACCESS request of
  * exactly 10 GB is given 6 GB, else 4 GB: the 2 GB guard below plus 4 or 2 GB from the start. V8 commits
  * the memory from the start and grows it in place, so a memory up to that size works as before; only an
- * out-of-bounds access past it no longer lands in the guard. Logged as [wasm-guard-trim]. */
+ * out-of-bounds access past it no longer lands in the guard. Logged as [wasm-guard-trim].
+ * The trimmed range is placed only between the guest image window's ceiling (ios_furniture_ceiling) and
+ * the emulator's arena at 0x7c00000000, at 256 MB steps, never by the kernel's pick: the 13:59 and 14:00
+ * runs of 2026-11-02 got 4 GB at 0x70bd430000 and 0x70b8830000, inside the window, and the next process could no longer map
+ * nw.dll (138 MB; "Failed to load NW DLL ... Not enough memory"), so Chromium's audio service never
+ * started and the game stopped on a dark screen after its splash. */
 static NTSTATUS ios_wasm_guard_trim( ULONG type, ULONG protect, SIZE_T want, void **out, SIZE_T *out_size )
 {
     static const SIZE_T sizes[] = { 0x180000000ull, 0x100000000ull };
@@ -32437,21 +32442,26 @@ static NTSTATUS ios_wasm_guard_trim( ULONG type, ULONG protect, SIZE_T want, voi
     if (want != 0x280000000ull || type != MEM_RESERVE || protect != PAGE_NOACCESS) return STATUS_NO_MEMORY;
     for (i = 0; i < sizeof(sizes) / sizeof(sizes[0]); i++)
     {
-        void *p = NULL;
-        SIZE_T s = sizes[i];
+        ULONG_PTR a;
 
-        if (!allocate_virtual_memory( &p, &s, type, protect, 0, 0, 0, 0 ))
+        for (a = ios_furniture_ceiling; a + sizes[i] <= 0x7c00000000ull; a = ((a >> 28) + 1) << 28)
         {
-            if (trim_logs++ < 32)
-                dprintf( 2, "[wasm-guard-trim] personal 10240 MB reserve found no hole: gave %lu MB at %p "
-                            "(MADEIRA_WASM_GUARD_TRIM)\n", (unsigned long)(s >> 20), p );
-            *out = p;
-            *out_size = s;
-            return STATUS_SUCCESS;
+            void *p = (void *)a;
+            SIZE_T s = sizes[i];
+
+            if (!allocate_virtual_memory( &p, &s, type, protect, 0, 0, 0, 0 ))
+            {
+                if (trim_logs++ < 32)
+                    dprintf( 2, "[wasm-guard-trim] personal 10240 MB reserve found no hole: gave %lu MB at %p "
+                                "(MADEIRA_WASM_GUARD_TRIM)\n", (unsigned long)(s >> 20), p );
+                *out = p;
+                *out_size = s;
+                return STATUS_SUCCESS;
+            }
         }
     }
     if (trim_logs++ < 32)
-        dprintf( 2, "[wasm-guard-trim] personal 10240 MB reserve: no 6144 or 4096 MB hole either\n" );
+        dprintf( 2, "[wasm-guard-trim] personal 10240 MB reserve: no 6144 or 4096 MB slot above the image window either\n" );
     return STATUS_NO_MEMORY;
 }
 

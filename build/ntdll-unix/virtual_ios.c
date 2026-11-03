@@ -36483,6 +36483,9 @@ NTSTATUS WINAPI NtProtectVirtualMemory( HANDLE process, PVOID *addr_ptr, SIZE_T 
                             unsigned short *entries;
 
                             if (!block_size || block_size < 8) break;
+                            /* madeira-bcd personal [reloc-bounds]: a block longer than the rest of the table ends the walk, as in
+                             * the keep-bitmap walk above (lucieneslife's stripped table: its first block read past the pool) */
+                            if (block_size > (size_t)(block_end - block)) break;
                             num_entries = (block_size - 8) / 2;
                             entries = (unsigned short *)(block + 8);
 

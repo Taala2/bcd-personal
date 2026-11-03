@@ -137,7 +137,7 @@ enum BCDNWJS64Launch {
               entry.servicesScript == nil else { return .none }
         let program = LibraryModel.drive.appendingPathComponent(entry.launchRelativePath)
         guard BCDNWJS64.isNWJS32(program: program) else { return .none }
-        if !MadeiraConfig.flag("MADEIRA_NWJS64") || BCDNWJS64.turnedOff(entry.config ?? "")
+        if !MadeiraConfig.flag("MADEIRA_NWJS64") || BCDNWJS64.turnedOff(entry.config ?? "")   // 0: a 32-bit NW.js game (RPG Maker MV) starts on its own NW.js, not on BCD's 64-bit NW.js 0.48.4
             || BCDNWJS64.turnedOff(GameProfile(windowsPath: entry.windowsPath).text) {
             LogStore.shared.log("[nwjs64] \(program.lastPathComponent) is a 32-bit NW.js program; env.MADEIRA_NWJS64 = 0: it starts on its own NW.js")
             return .none

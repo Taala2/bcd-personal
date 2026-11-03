@@ -16,29 +16,39 @@ import Foundation
     private var current: Task<Void, Error>?
     /// A download or unpacking that failed in this run of BCD: further starts run the game's own NW.js.
     private(set) var failedThisRun = false
+    /// True from the Play that starts the download (set before that Play returns) until it ends.
     var busy: Bool { current != nil }
+    /// Where the run is, for the waiting message: bytes received so far, or nil while it unpacks.
+    private var stage: (Int64?) -> Void = { _ in }
 
     private func log(_ line: String) { LogStore.shared.log(line) }
 
-    /// Makes the NW.js folder complete: downloads, checks and unpacks it, or returns at once when it is there.
-    /// A second caller joins the run in progress.
-    func ensure() async throws {
-        if let running = current { try await running.value; return }
+    /// Starts making the NW.js folder complete (download, check, unpack) and calls `done` on the main actor
+    /// with the outcome. `busy` is true before it returns; a call while a run is in progress does nothing.
+    /// `progress` gets the bytes received, then nil while the archive is unpacked.
+    func start(progress: @escaping (Int64?) -> Void, done: @escaping (Error?) -> Void) {
+        guard current == nil else { return }
         let drive = LibraryModel.drive
-        if BCDNWJS64.ready(drive: drive) { return }
+        stage = progress
         let task = Task { try await self.run(drive: drive) }
         current = task
-        defer { current = nil }
-        do { try await task.value }
-        catch {
-            failedThisRun = true
-            let reason = (error as? BCDLauncherError)?.logReason ?? (error is CancellationError ? "cancelled" : "other")
-            log("[nwjs64] download failed reason=\(reason); this run of BCD starts 32-bit NW.js games on their own NW.js")
-            throw error
+        Task {
+            var failure: Error?
+            do { try await task.value }
+            catch {
+                failure = error
+                failedThisRun = true
+                let reason = (error as? BCDLauncherError)?.logReason ?? (error is CancellationError ? "cancelled" : "other")
+                log("[nwjs64] download failed reason=\(reason); this run of BCD starts 32-bit NW.js games on their own NW.js")
+            }
+            current = nil
+            stage = { _ in }
+            done(failure)
         }
     }
 
     private func run(drive: URL) async throws {
+        if BCDNWJS64.ready(drive: drive) { return }
         let fm = FileManager.default
         let parent = BCDNWJS64.folder(drive: drive).deletingLastPathComponent()
         do { try fm.createDirectory(at: parent, withIntermediateDirectories: true) }
@@ -57,6 +67,7 @@ import Foundation
         guard size == BCDNWJS64.bytes else { throw BCDLauncherError.checksum(what: "NW.js") }
         guard try BCDGeckoFiles.sha256(of: zip) == BCDNWJS64.sha256 else { throw BCDLauncherError.checksum(what: "NW.js") }
         log("[nwjs64] the archive matches its pinned size and SHA-256; unpacking")
+        stage(nil)
         let files = try await Task.detached(priority: .utility) { try BCDNWJS64Installer.unpack(zip: zip, drive: drive) }.value
         log("[nwjs64] ready: \(files) files in \(BCDNWJS64.windowsFolder)")
     }
@@ -66,10 +77,15 @@ import Foundation
             throw BCDLauncherError.redirected(BCDLauncherNet.origin(BCDNWJS64.url))
         }
         let control = BCDLauncherDownloadControl()
+        let box = BCDNWJS64ProgressBox()
         let reached: URL = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
                 let downloader = BCDLauncherDownloader(url: BCDNWJS64.url, hosts: BCDNWJS64.hosts, maxBytes: BCDNWJS64.bytes + (1 << 20),
-                                                       company: "NW.js", destination: part, progress: { _, _ in }) { result in
+                                                       company: "NW.js", destination: part, progress: { received, _ in
+                    // At most one message update per megabyte, on the main actor.
+                    guard box.accept(received) else { return }
+                    Task { @MainActor [weak self] in self?.stage(received) }
+                }) { result in
                     control.clear()
                     continuation.resume(with: result)
                 }
@@ -122,8 +138,21 @@ import Foundation
 enum BCDNWJS64Launch {
     enum Plan: Equatable { case none, download, run }
 
-    static let waitMessage = "This game uses a 32-bit NW.js, which doesn't run reliably in BCD. BCD is downloading its own "
-        + "64-bit NW.js (about 95 MB, once); the game starts by itself when it is ready."
+    /// The waiting message's first words, so a progress update only replaces the message it put up.
+    static let waitPrefix = "This game uses a 32-bit NW.js, which doesn't run reliably in BCD."
+
+    /// The waiting message: `received` bytes so far, or nil while the archive is unpacked.
+    static func waitMessage(received: Int64?) -> String {
+        let total = BCDNWJS64.bytes
+        let where_: String
+        if let received {
+            let percent = total > 0 ? min(100, Int(received * 100 / total)) : 0
+            where_ = "Downloading BCD's 64-bit NW.js (once): \(percent)% (\(received / 1_000_000) of \(total / 1_000_000) MB)."
+        } else {
+            where_ = "Unpacking BCD's 64-bit NW.js (once)."
+        }
+        return waitPrefix + " " + where_ + " The game starts by itself when it is ready."
+    }
 
     static func failedMessage(_ error: Error) -> String {
         let why = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
@@ -146,14 +175,48 @@ enum BCDNWJS64Launch {
         return BCDNWJS64Installer.shared.failedThisRun ? .none : .download
     }
 
+    /// The entry whose start runs on BCD's NW.js, between export and the launch worker's reassert.
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var armed: UUID?
+
+    /// A start that is not .run: nothing to reassert on the launch worker.
+    static func disarm() { lock.lock(); armed = nil; lock.unlock() }
+
     /// After configureLaunch: nw.exe with the game's folder as the app, in the game's folder.
     @MainActor static func export(_ entry: LibraryEntry) {
+        lock.lock(); armed = entry.id; lock.unlock()
+        apply(entry)
+        let name = entry.launchWindowsPath.split(separator: "\\").last.map(String.init) ?? entry.launchWindowsPath
+        LogStore.shared.log("[nwjs64] \(name) is a 32-bit NW.js program: it starts on BCD's NW.js \(BCDNWJS64.version) (64-bit), "
+                            + "\(BCDNWJS64.windowsExe), with its folder as the app; env.MADEIRA_NWJS64 = 0 turns this off")
+    }
+
+    /// On the launch worker, after LibraryEntry.applyEnvironment, which runs configureLaunch again and puts the
+    /// game's own program back: the same command once more for the entry export armed (a build-627 run started
+    /// Game.exe after the [nwjs64] line, 2026-11-03).
+    static func reassert(_ entry: LibraryEntry) {
+        lock.lock(); let mine = armed == entry.id; armed = nil; lock.unlock()
+        guard mine else { return }
+        apply(entry)
+        LogStore.shared.log("[nwjs64] kept after the launch profile was applied: \(BCDNWJS64.windowsExe)")
+    }
+
+    private static func apply(_ entry: LibraryEntry) {
         let command = BCDNWJS64.command(gameFolder: LibraryEntry.folder(of: entry.launchWindowsPath), arguments: entry.programArguments)
         setenv("MADEIRA_EXE", command.exe, 1)
         setenv("MADEIRA_ARGS", command.args, 1)
         setenv("MADEIRA_WORKDIR", entry.launchDirectory, 1)
-        let name = entry.launchWindowsPath.split(separator: "\\").last.map(String.init) ?? entry.launchWindowsPath
-        LogStore.shared.log("[nwjs64] \(name) is a 32-bit NW.js program: it starts on BCD's NW.js \(BCDNWJS64.version) (64-bit), "
-                            + "\(BCDNWJS64.windowsExe), with its folder as the app; env.MADEIRA_NWJS64 = 0 turns this off")
+    }
+}
+
+/// Lets the waiting message follow a download without an update for every 64 KB: about one a megabyte.
+final class BCDNWJS64ProgressBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var last: Int64 = -1
+    func accept(_ received: Int64) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard last < 0 || received - last >= 1 << 20 else { return false }
+        last = received
+        return true
     }
 }

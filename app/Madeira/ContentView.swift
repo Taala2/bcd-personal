@@ -1399,24 +1399,26 @@ struct ContentView: View {
         }
         // madeira-bcd personal (2026-11-03): a 32-bit NW.js game starts on BCD's 64-bit NW.js (BCDNWJS64.swift); its
         // first start downloads that NW.js once and starts the game when it is ready.
+        // A Play while it downloads shows the message again and starts nothing: the download's own end starts the game.
         let nwjs64 = BCDNWJS64Launch.plan(entry)
         if nwjs64 == .download {
-            library.error = BCDNWJS64Launch.waitMessage
+            library.error = BCDNWJS64Launch.waitMessage(received: 0)
             guard !BCDNWJS64Installer.shared.busy else { return }
             let pending = entry
-            Task { @MainActor in
-                do {
-                    try await BCDNWJS64Installer.shared.ensure()
-                    if library.error == BCDNWJS64Launch.waitMessage { library.error = nil }
-                    startLibraryEntry(pending)
-                } catch {
-                    library.error = BCDNWJS64Launch.failedMessage(error)
+            BCDNWJS64Installer.shared.start(progress: { received in
+                // Only the message it put up: one closed with OK stays closed.
+                if library.error?.hasPrefix(BCDNWJS64Launch.waitPrefix) == true {
+                    library.error = BCDNWJS64Launch.waitMessage(received: received)
                 }
-            }
+            }, done: { failure in
+                if let failure { library.error = BCDNWJS64Launch.failedMessage(failure); return }
+                if library.error?.hasPrefix(BCDNWJS64Launch.waitPrefix) == true { library.error = nil }
+                startLibraryEntry(pending)
+            })
             return
         }
         entry.configureLaunch()
-        if nwjs64 == .run { BCDNWJS64Launch.export(entry) }
+        if nwjs64 == .run { BCDNWJS64Launch.export(entry) } else { BCDNWJS64Launch.disarm() }
         if BCDEpic.enabled { BCDEpic.shared.applyLaunch(entry) }   // madeira-bcd (2026-10-22): an Epic game's signed-in start goes through BCD Host (BCDEpicStart.swift)
         // madeira-bcd: the game's own options (LibraryBCD.swift); this run's
         // log is named below, by upstream's rule (the program a launch starts).
@@ -1548,6 +1550,9 @@ struct ContentView: View {
             // precision, frame limit).
             if let profile {
                 profile.applyEnvironment()
+                // madeira-bcd personal: applyEnvironment ran configureLaunch again; a 32-bit NW.js game keeps BCD's
+                // 64-bit NW.js (BCDNWJS64Install.swift).
+                BCDNWJS64Launch.reassert(profile)
                 // madeira-bcd: applyEnvironment sets or unsets AVX and "Report an NVIDIA
                 // GPU" from the entry's own fields; BCDLaunch.applyExtras exported the
                 // game's LibraryPrefs switches before, on the main thread (Game details

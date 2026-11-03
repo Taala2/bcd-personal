@@ -75,11 +75,31 @@ check('the command is exported right after configureLaunch',
       i_export > i_configure and body[i_configure:i_export].count('\n') == 1)
 download = body[i_plan:i_configure]
 check('.download: a message, the download, then the same start again',
-      'if nwjs64 == .download {' in download and 'library.error = BCDNWJS64Launch.waitMessage' in download
-      and 'try await BCDNWJS64Installer.shared.ensure()' in download and 'startLibraryEntry(pending)' in download
+      'if nwjs64 == .download {' in download and 'library.error = BCDNWJS64Launch.waitMessage(received: 0)' in download
+      and 'BCDNWJS64Installer.shared.start(progress: { received in' in download and 'startLibraryEntry(pending)' in download
       and re.search(r'\n            return\n        \}\n\s*$', download) is not None)
+check('the message follows the download (percent and megabytes, then unpacking), only while it is the one it put up',
+      'library.error = BCDNWJS64Launch.waitMessage(received: received)' in download
+      and 'if library.error?.hasPrefix(BCDNWJS64Launch.waitPrefix) == true {' in download
+      and 'Downloading BCD\'s 64-bit NW.js (once): \\(percent)% (\\(received / 1_000_000) of \\(total / 1_000_000) MB).' in install
+      and 'Unpacking BCD\'s 64-bit NW.js (once).' in install and 'stage(nil)' in install
+      and 'Task { @MainActor [weak self] in self?.stage(received) }' in install)
 check('a second Play while it downloads only shows the message', 'guard !BCDNWJS64Installer.shared.busy else { return }' in download)
-check('a failed download says so and starts nothing', 'library.error = BCDNWJS64Launch.failedMessage(error)' in download)
+starter = install[install.find('func start(progress:'):install.find('private func run(drive: URL)')]
+i_guard = starter.find('guard current == nil else { return }')
+i_current = starter.find('current = task')
+i_wait = starter.find('try await task.value')
+check('the download counts as busy before the first Play returns (set synchronously, not in the task)',
+      0 <= i_guard < i_current < i_wait and starter.count('Task {') == 2)
+check('a failed download says so and starts nothing', 'if let failure { library.error = BCDNWJS64Launch.failedMessage(failure); return }' in download)
+worker = content[content.find('DispatchQueue.global(qos: .userInitiated).async {', content.find('private func runWineFullSequence(')):]
+i_env = worker.find('profile.applyEnvironment()')
+i_re = worker.find('BCDNWJS64Launch.reassert(profile)')
+check('the launch worker puts BCD\'s NW.js back right after applyEnvironment (which runs configureLaunch again)',
+      0 <= i_env < i_re and worker[i_env:i_re].count('\n') <= 3)
+check('only the start export armed is reasserted, once; other starts disarm',
+      'lock.lock(); let mine = armed == entry.id; armed = nil; lock.unlock()' in install
+      and 'if nwjs64 == .run { BCDNWJS64Launch.export(entry) } else { BCDNWJS64Launch.disarm() }' in body)
 check('export sets the program, its arguments and the game\'s folder',
       all(s in install for s in ('setenv("MADEIRA_EXE", command.exe, 1)', 'setenv("MADEIRA_ARGS", command.args, 1)',
                                  'setenv("MADEIRA_WORKDIR", entry.launchDirectory, 1)')))

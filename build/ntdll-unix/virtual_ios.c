@@ -1380,6 +1380,30 @@ static void *ios_pool_warmer_thread( void *arg )
                             (unsigned long long)vmi.compressed >> 20,
                             (unsigned long long)vmi.external >> 20,
                             (unsigned long long)vmi.reusable >> 20, cycle);
+#ifdef TASK_VM_INFO_REV3_COUNT
+                    /* madeira-bcd personal (2026-11-04): the footprint's tagged ledgers. phys_footprint also
+                     * charges memory the region walk never names (Metal and IOSurface allocations among them);
+                     * the kernel keeps it per tag. A Unity game (CelSector) reached 6097 MB with only 1761 MB
+                     * internal and 939 MB compressed. Every 5th cycle, and when the graphics ledger moved by
+                     * 64 MB or more; no other behaviour changes. */
+                    if (vmi_cnt >= TASK_VM_INFO_REV3_COUNT)
+                    {
+                        static long long last_gfx = -1;
+                        long long gfx = (long long)vmi.ledger_tag_graphics_footprint >> 20;
+                        if ((cycle % 5) == 0 || last_gfx < 0 || gfx - last_gfx >= 64 || last_gfx - gfx >= 64)
+                        {
+                            last_gfx = gfx;
+                            dprintf(2, "[footprint-ledger] madeira-bcd graphics=%lld MB (+%lld compressed) media=%lld MB "
+                                    "neural=%lld MB purgeable-nonvolatile=%lld MB (+%lld compressed) network=%lld MB (cycle=%u)\n",
+                                    gfx, (long long)vmi.ledger_tag_graphics_footprint_compressed >> 20,
+                                    (long long)vmi.ledger_tag_media_footprint >> 20,
+                                    (long long)vmi.ledger_tag_neural_footprint >> 20,
+                                    (long long)vmi.ledger_purgeable_nonvolatile >> 20,
+                                    (long long)vmi.ledger_purgeable_novolatile_compressed >> 20,
+                                    (long long)vmi.ledger_tag_network_nonvolatile >> 20, cycle);
+                        }
+                    }
+#endif
                 }
             }
             /* ml566: WHEN does the host malloc zone become corrupt?
@@ -1535,7 +1559,9 @@ static void *ios_pool_warmer_thread( void *arg )
                         else b = B_OTHER;
                         band_dirty[b] += d;
                         band_res[b] += (unsigned long long)info.pages_resident << 14;
-                        if (b == B_HOST_LOW || b == B_PA)
+                        /* madeira-bcd personal: the guest and FEX bands too, so a game's own heaps and
+                         * the emulator's buffers can be told apart (matched against the [vname] lines) */
+                        if (b == B_HOST_LOW || b == B_PA || b == B_GUEST || b == B_FEX)
                         {
                             int w = 0, q;
                             for (q = 1; q < 4; q++) if (btop[b][q].dirty < btop[b][w].dirty) w = q;
@@ -1634,7 +1660,7 @@ static void *ios_pool_warmer_thread( void *arg )
                 for (ti = 0; ti < B_MAX; ti++)
                 {
                     int q;
-                    if (ti != B_HOST_LOW && ti != B_PA) continue;
+                    if (ti != B_HOST_LOW && ti != B_PA && ti != B_GUEST && ti != B_FEX) continue;   /* madeira-bcd personal: + guest, fex */
                     dprintf(2, "[phys-map]   ml1074 %s dirtiest:", band_name[ti]);
                     for (q = 0; q < 4; q++) if (btop[ti][q].dirty)
                         dprintf(2, " 0x%llx+0x%llx=%lluMB(tag%u,prot%u)", btop[ti][q].base, btop[ti][q].size,

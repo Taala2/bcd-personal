@@ -102,6 +102,11 @@ jobs:
       - name: Check personal recommended settings
         run: python3 tests/host/check-personal-recommendations.py --require-swift
 
+      # madeira-bcd personal: a 32-bit NW.js game (RPG Maker MV) starts on BCD's 64-bit NW.js 0.48.4,
+      # downloaded once from dl.nwjs.io against its pinned SHA-256 (app/Madeira/BCDNWJS64.swift).
+      - name: Check the 64-bit NW.js for 32-bit NW.js games
+        run: python3 tests/host/check-nwjs64.py --require-swift
+
       # madeira-bcd: auto-tune (docs/AUTO-TUNE.md): off changes nothing; its hooks, rules,
       # fixtures, engine and app side.
       - name: Check auto-tune

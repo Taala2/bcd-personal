@@ -1397,7 +1397,26 @@ struct ContentView: View {
         guard entry.launchWindowsPath.utf8.count < 1024, entry.launchArguments.utf8.count < 4096 else {
             library.error = "The program path or its launch arguments are longer than BCD allows."; return
         }
+        // madeira-bcd personal (2026-11-03): a 32-bit NW.js game starts on BCD's 64-bit NW.js (BCDNWJS64.swift); its
+        // first start downloads that NW.js once and starts the game when it is ready.
+        let nwjs64 = BCDNWJS64Launch.plan(entry)
+        if nwjs64 == .download {
+            library.error = BCDNWJS64Launch.waitMessage
+            guard !BCDNWJS64Installer.shared.busy else { return }
+            let pending = entry
+            Task { @MainActor in
+                do {
+                    try await BCDNWJS64Installer.shared.ensure()
+                    if library.error == BCDNWJS64Launch.waitMessage { library.error = nil }
+                    startLibraryEntry(pending)
+                } catch {
+                    library.error = BCDNWJS64Launch.failedMessage(error)
+                }
+            }
+            return
+        }
         entry.configureLaunch()
+        if nwjs64 == .run { BCDNWJS64Launch.export(entry) }
         if BCDEpic.enabled { BCDEpic.shared.applyLaunch(entry) }   // madeira-bcd (2026-10-22): an Epic game's signed-in start goes through BCD Host (BCDEpicStart.swift)
         // madeira-bcd: the game's own options (LibraryBCD.swift); this run's
         // log is named below, by upstream's rule (the program a launch starts).

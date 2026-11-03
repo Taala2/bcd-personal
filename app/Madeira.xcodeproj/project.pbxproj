@@ -112,6 +112,8 @@
 		A1000F54 /* BCDEpic/BCDEpicStart.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000F54 /* BCDEpicStart.swift */; };
 		A1000FB5 /* BCDGeckoSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000FB5 /* BCDGeckoSection.swift */; };
 		A1000FB4 /* BCDGecko.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000FB4 /* BCDGecko.swift */; };
+		A1000BA4 /* BCDNWJS64.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000BA4 /* BCDNWJS64.swift */; };
+		A1000BA5 /* BCDNWJS64Install.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000BA5 /* BCDNWJS64Install.swift */; };
 		A1000FB3 /* BCDLaunchersLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000FB3 /* BCDLaunchersLive.swift */; };
 		A1000FB2 /* BCDLauncherDownload.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000FB2 /* BCDLauncherDownload.swift */; };
 		A1000FB1 /* BCDLauncherView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000FB1 /* BCDLauncherView.swift */; };
@@ -521,6 +523,8 @@
 		A2000F54 /* BCDEpicStart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDEpic/BCDEpicStart.swift"; sourceTree = "<group>"; };
 		A2000FB5 /* BCDGeckoSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDGeckoSection.swift; sourceTree = "<group>"; };
 		A2000FB4 /* BCDGecko.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDGecko.swift; sourceTree = "<group>"; };
+		A2000BA4 /* BCDNWJS64.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDNWJS64.swift; sourceTree = "<group>"; };
+		A2000BA5 /* BCDNWJS64Install.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDNWJS64Install.swift; sourceTree = "<group>"; };
 		A2000FB3 /* BCDLaunchersLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDLaunchersLive.swift; sourceTree = "<group>"; };
 		A2000FB2 /* BCDLauncherDownload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDLauncherDownload.swift; sourceTree = "<group>"; };
 		A2000FB1 /* BCDLauncherView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDLauncherView.swift; sourceTree = "<group>"; };
@@ -1003,6 +1007,8 @@
 				A2000F54 /* BCDEpicStart.swift */,
 				A2000FB5 /* BCDGeckoSection.swift */,
 				A2000FB4 /* BCDGecko.swift */,
+				A2000BA4 /* BCDNWJS64.swift */,
+				A2000BA5 /* BCDNWJS64Install.swift */,
 				A2000FB3 /* BCDLaunchersLive.swift */,
 				A2000FB2 /* BCDLauncherDownload.swift */,
 				A2000FB1 /* BCDLauncherView.swift */,
@@ -1595,6 +1601,8 @@
 				A1000F54 /* BCDEpic/BCDEpicStart.swift in Sources */,
 				A1000FB5 /* BCDGeckoSection.swift in Sources */,
 				A1000FB4 /* BCDGecko.swift in Sources */,
+				A1000BA4 /* BCDNWJS64.swift in Sources */,
+				A1000BA5 /* BCDNWJS64Install.swift in Sources */,
 				A1000FB3 /* BCDLaunchersLive.swift in Sources */,
 				A1000FB2 /* BCDLauncherDownload.swift in Sources */,
 				A1000FB1 /* BCDLauncherView.swift in Sources */,

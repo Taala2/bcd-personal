@@ -106,6 +106,9 @@ ENGINE_BOUND |= {"BCDGraphicsDefaults.swift"}
 # Settings row, which never shows off the foldable model, build here; BCDFoldableLive.swift names the game view, the control window
 # and LogStore, so it stays out).
 ENGINE_BOUND |= {"BCDFoldableLive.swift"}
+# madeira-bcd personal: BCDNWJS64Install.swift (the 64-bit NW.js download and launch glue) names LibraryModel, LibraryEntry and
+# LogStore, so it stays out; BCDNWJS64.swift is Foundation only and builds here.
+ENGINE_BOUND |= {"BCDNWJS64Install.swift"}
 SCREENS += ["ingame-menu", "starting", "overlay"]
 
 

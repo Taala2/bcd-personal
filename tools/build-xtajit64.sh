@@ -218,6 +218,9 @@ python3 "$R/tools/patch-fex-ios-ec-teardown-ctx.py" "$R/FEX" || echo "::warning:
 # madeira-bcd personal, whichever pin (both carry the call-ret elision by now): the elided call-ret stack is not read at thread
 # start; ZeroScrub's read brought ~8 MB per thread into the iOS footprint (FINDINGS.md 5b, build 17df614).
 python3 "$R/tools/patch-fex-ios-callret-noscrub.py" "$R/FEX" || echo "::warning::the call-ret no-scrub overlay was not applied (FEX anchor changed); xtajit64.dll scrubs as before"
+# madeira-bcd personal, whichever pin (after the Launcher full-SMC opt-in above): --type=renderer processes order vector and
+# block-copy accesses; V.0.7's renderer needs both, Succum's browser process crawls with them (FINDINGS.md 5b, 2026-11-04).
+python3 "$R/tools/patch-fex-ios-renderer-tso.py" "$R/FEX" || echo "::warning::the renderer TSO overlay was not applied (FEX anchor changed); renderers keep the configured order"
 # Opt-in, whichever pin (round 626, agent G1 S7; Burnout Paradise 7MSNGW): MADEIRA_FEX_CPUID_CLASSIC=1 reports CPUID.1:EDX DE and PSE.
 python3 "$R/tools/patch-fex-ios-cpuid-classic.py" "$R/FEX/FEXCore/Source/Interface/Core/CPUID.cpp" || echo "::warning::the CPUID DE/PSE opt-in was not applied (FEX anchor changed); xtajit64.dll is built without it"
 # Opt-in, whichever pin (round 624, agent A S7; Borderlands GOTY Enhanced V0FQAS): the alias table has room for 1024 image copies,

@@ -1655,6 +1655,15 @@ OVERLAY = {
                         "crossing to the native code and back (Horizon Zero Dawn: 2-4 million such calls a second). "
                         "Same results; a negative or NaN sqrt still goes to Wine's native sqrt. Off (default): the "
                         "shipped ucrtbase.dll. Set it in the game's own file; read at session start."},
+    # madeira-bcd personal: renderer_wasm_cmdline (build/ntdll-unix/process_ios.c).
+    "env.MADEIRA_WASM_NO_TIERUP": {"category": "Wine core (ntdll)", "title": "Web-engine WebAssembly without tier-up",
+                "kind": "bool", "default": "1",
+                "sources": ["build/ntdll-unix/process_ios.c"],
+                "note": "On unless 0. A Chromium renderer (NW.js, Electron, CEF: a process started with --type=renderer) "
+                        "gets --no-wasm-tier-up in its last --js-flags=, or a new one. V8 then keeps WebAssembly on its "
+                        "first compiler and never rewrites a module's jump table, which the emulator does not see: V.0.7 "
+                        "(RPG Maker MZ) jumped into freed code without it and played with it. WebAssembly runs slower. "
+                        "A renderer whose command line already names wasm-tier-up is left alone. Logged as [wasm-tierup]."},
     # madeira-bcd: ios_vcrt_arm64_key_publish (build/ntdll-unix/server_ios.c).
     "env.MADEIRA_VCRT_ARM64_KEY": {"category": "Wine core (ntdll)", "title": "ARM64 Visual C++ runtime marker (Unreal bootstrap)",
                 "kind": "text", "default": "",

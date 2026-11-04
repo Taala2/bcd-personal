@@ -1827,6 +1827,64 @@ static int sc_browser_cmdline( const WCHAR *cl, int cl_len, int jitless, const c
     out[o] = 0;
     return o;
 }
+
+/* madeira-bcd personal (2026-11-04) [wasm-tierup]: a Chromium renderer (a process started with
+ * --type=renderer: NW.js, Electron, CEF) gets --no-wasm-tier-up in its V8 flags, unless
+ * env.MADEIRA_WASM_NO_TIERUP = 0.
+ *
+ * V.0.7 (RPG Maker MZ on NW.js 0.48, V8 8.5; 0.1.630 IPA, iPhone16,1): V8 compiles WebAssembly
+ * with Liftoff, compiles it again with TurboFan in the background, rewrites the function's slot
+ * in the module's jump table (`e9 rel32` slots at the start of the code area) and frees the
+ * Liftoff code (filled with cc, then decommitted). The slot is rewritten through the Mach store
+ * emulation, which never invalidates FEX's translation (signal_arm64_ios.c, ml635), so the
+ * renderer kept running the old slot and jumped into freed code ([entry-fail] ... cc cc, 22:43
+ * and 23:14, also with --single-threaded-gc). With --js-flags=--no-wasm-tier-up nothing is
+ * rewritten: 23:23, 77 s in the game, 0 entry-fail. The cost is Liftoff-speed WebAssembly.
+ *
+ * `out` (`cap` WCHARs with the NUL) gets `cl` with the flag in its LAST --js-flags= (Chromium
+ * keeps only the last one, and the game's own V8 flags from package.json are there), the same
+ * argument however Windows splits it (see sc_browser_cmdline): --js-flags=--a ->
+ * --js-flags=--no-wasm-tier-up" "--a, --js-flags="--a" and "--js-flags=--a" get it inside the
+ * quotes; without one, " --js-flags=--no-wasm-tier-up" is appended. Returns the new length and
+ * *merged = 1 when it went into the program's own switch, or -1 when `cl` is not a renderer's,
+ * already names wasm-tier-up (the program chose), or `cap` is too small. */
+static int renderer_wasm_cmdline( const WCHAR *cl, int cl_len, WCHAR *out, int cap, int *merged )
+{
+    static const char flag[] = "--no-wasm-tier-up", named[] = "wasm-tier-up";
+    const int nn = sizeof(named) - 1;
+    int j, k, m, o = 0, inq = 0, pos;
+    const char *add;
+
+    *merged = 0;
+    if (!cl || cl_len <= 0 || sc_switch_end( cl, cl_len, "--type=renderer" ) < 0) return -1;
+    for (k = 0; k + nn <= cl_len; k++)
+    {
+        for (m = 0; m < nn; m++) if (cl[k + m] != (WCHAR)named[m]) break;
+        if (m == nn) return -1;
+    }
+    if (cap < cl_len + (int)sizeof(flag) + 16) return -1;
+    j = sc_switch_end( cl, cl_len, "--js-flags=" );
+    if (j < 0)
+    {
+        for (k = 0; k < cl_len; k++) out[o++] = cl[k];
+        for (add = " --js-flags="; *add; add++) out[o++] = (WCHAR)*add;
+        for (add = flag; *add; add++) out[o++] = (WCHAR)*add;
+        out[o] = 0;
+        return o;
+    }
+    for (k = 0; k < j; k++) if (cl[k] == '"') inq = !inq;
+    pos = j;
+    if (!inq && pos < cl_len && cl[pos] == '"') { pos++; inq = 1; }
+    for (k = 0; k < pos; k++) out[o++] = cl[k];
+    for (add = flag; *add; add++) out[o++] = (WCHAR)*add;
+    if (inq) out[o++] = ' ';
+    else if (pos < cl_len && cl[pos] != ' ' && cl[pos] != '\t')
+        for (add = "\" \""; *add; add++) out[o++] = (WCHAR)*add;
+    for (k = pos; k < cl_len; k++) out[o++] = cl[k];
+    out[o] = 0;
+    *merged = 1;
+    return o;
+}
 #endif
 
 /**********************************************************************
@@ -2654,6 +2712,32 @@ NTSTATUS WINAPI NtCreateUserProcess( HANDLE *process_handle_ptr, HANDLE *thread_
                                 "(no memory) -- it runs multi-process\n" );
                 }
             }
+        }
+    }
+
+    /* madeira-bcd personal: [wasm-tierup] -- see renderer_wasm_cmdline. After every other
+     * command-line change, so it sees the final --js-flags=. */
+    {
+        const char *keep = getenv( "MADEIRA_WASM_NO_TIERUP" );   /* 0: a Chromium renderer's V8 keeps WebAssembly tier-up */
+        int cl_len = params->CommandLine.Length / sizeof(WCHAR), merged = 0, o = -1;
+        int cap = cl_len + 48;
+        WCHAR *nbuf = (keep && keep[0] == '0') ? NULL : malloc( cap * sizeof(WCHAR) );   /* kept when used: leaks once per start, as above */
+
+        if (nbuf) o = renderer_wasm_cmdline( params->CommandLine.Buffer, cl_len, nbuf, cap, &merged );
+        if (o < 0) free( nbuf );
+        else
+        {
+            static int wasm_tierup_n;
+
+            params->CommandLine.Buffer = nbuf;
+            params->CommandLine.Length = o * sizeof(WCHAR);
+            params->CommandLine.MaximumLength = params->CommandLine.Length + sizeof(WCHAR);
+            if (wasm_tierup_n++ < 16)
+                dprintf( 2, "[wasm-tierup] personal: %s starts as a Chromium renderer with --no-wasm-tier-up (%s): "
+                            "WebAssembly stays on Liftoff, its jump table is never rewritten under the emulator "
+                            "(env.MADEIRA_WASM_NO_TIERUP=0 keeps tier-up)\n",
+                         debugstr_us( &params->ImagePathName ),
+                         merged ? "put first in its own --js-flags" : "a new --js-flags switch" );
         }
     }
 #endif

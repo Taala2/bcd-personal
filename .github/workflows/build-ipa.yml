@@ -3022,6 +3022,11 @@ jobs:
       - name: Check WebAssembly guard trim
         run: python3 tests/host/check-wasm-guard-trim.py
 
+      # madeira-bcd personal: env.MADEIRA_WASM_NO_TIERUP (on unless 0) gives a Chromium renderer
+      # --no-wasm-tier-up, whose jump-table rewrites FEX never saw (V.0.7, RPG Maker MZ on NW.js).
+      - name: Check renderers keep WebAssembly on Liftoff
+        run: python3 tests/host/check-renderer-wasm-tierup.py
+
       # madeira-bcd: env.MADEIRA_ALIAS_RELEASE (off by default): anonymous JIT aliases follow
       # MEM_RELEASE and MEM_DECOMMIT (Ratchet & Clank: Rift Apart froze loading a save).
       - name: Check alias release

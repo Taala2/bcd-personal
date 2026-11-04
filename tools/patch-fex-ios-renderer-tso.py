@@ -18,9 +18,18 @@ So the strict order goes where the failures are, the processes started with
 utility processes keep the configured order.
 
 A game file that names FEX_VECTORTSOENABLED or FEX_MEMCPYSETTSOENABLED keeps
-its value for that option (a preset writes both). MADEIRA_RENDERER_STRICT_TSO=0
-turns this off. One log line per process says what was decided. Only the
-FEX_IOS_HOST ARM64EC build changes; the WOW64 module is untouched.
+its value for that option (a preset writes both). One log line per process
+says what was decided. Only the FEX_IOS_HOST ARM64EC build changes; the WOW64
+module is untouched.
+
+OFF BY DEFAULT since the device run of build d057c87 (2026-11-04, 17:14):
+MADEIRA_RENDERER_STRICT_TSO=1 turns it on. With the strict order in its
+renderer only, Internship's renderer emulated 1,013,000 stores into V8's code
+pages ([mach_exc] EMULATED STR, ~100,000 a second) and stopped drawing after
+7 s; without the two options it emulates none and ran 6 minutes at 57-60 fps.
+V.0.7 emulated 38,000 and ran. Succum's slow start, the reason this was made,
+also happens without the options (FINDINGS.md 5d), so nothing argues for a
+default on.
 
 Applied by tools/build-xtajit64.sh for whichever pin. The block goes right
 after CONFIG_IS64BIT_MODE is set, so the Launcher full-SMC overlay's block
@@ -31,17 +40,17 @@ from pathlib import Path
 import sys
 
 MARKER = "renderer-tso-v1 madeira-bcd"
-SUMMARY = ("FEX ARM64EC: renderer processes order vector and block-copy accesses "
-           "(MADEIRA_RENDERER_STRICT_TSO=0 keeps the configured order)")
+SUMMARY = ("FEX ARM64EC: MADEIRA_RENDERER_STRICT_TSO=1 makes renderer processes order vector and block-copy "
+           "accesses (off by default)")
 
 REL = "Source/Windows/ARM64EC/Module.cpp"
 ANCHOR = '  FEXCore::Config::Set(FEXCore::Config::CONFIG_IS64BIT_MODE, "1");\n'
 ADD = '''#ifdef FEX_IOS_HOST
   /* ''' + MARKER + ''' (tools/patch-fex-ios-renderer-tso.py): a process started with
    * --type=renderer orders vector loads/stores and REP MOVS/STOS as x86 does. V.0.7's renderer
-   * jumps into freed (int3) code without both; Succum's browser process crawls with them, so
-   * only renderers get them. An explicit FEX_VECTORTSOENABLED or FEX_MEMCPYSETTSOENABLED wins;
-   * MADEIRA_RENDERER_STRICT_TSO=0 turns this off. Set before the context takes its options. */
+   * was thought to need both. Off by default: MADEIRA_RENDERER_STRICT_TSO=1 turns it on (with it,
+   * Internship's renderer emulated a million stores into V8's code and stopped). An explicit
+   * FEX_VECTORTSOENABLED or FEX_MEMCPYSETTSOENABLED wins. Set before the context takes its options. */
   {
     const char* StrictOpt = getenv("MADEIRA_RENDERER_STRICT_TSO");
     const char* VectorExplicit = getenv("FEX_VECTORTSOENABLED");
@@ -64,7 +73,7 @@ ADD = '''#ifdef FEX_IOS_HOST
         Renderer = k == NeedleLen;
       }
     }
-    const bool Enable = Renderer && !(StrictOpt && StrictOpt[0] == '0');
+    const bool Enable = Renderer && StrictOpt && StrictOpt[0] == '1';
     if (Enable && !VectorSet) {
       FEXCore::Config::Set(FEXCore::Config::CONFIG_VECTORTSOENABLED, "1");
     }

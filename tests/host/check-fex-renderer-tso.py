@@ -12,7 +12,7 @@ without a FEX build:
   - the block sits after CONFIG_IS64BIT_MODE and before CreateNewContext,
     which reads the options; it is compiled only for FEX_IOS_HOST, matches
     --type=renderer, sets both options only when the game file names neither
-    one, and MADEIRA_RENDERER_STRICT_TSO=0 turns it off;
+    one, and only with MADEIRA_RENDERER_STRICT_TSO=1 (off by default);
   - tools/build-xtajit64.sh runs it once, for whichever pin, after the
     Launcher full-SMC opt-in; CI runs this check.
 No device is run.
@@ -83,9 +83,9 @@ check('both options are set only when the game file names neither one',
       'if (Enable && !VectorSet) {\n      FEXCore::Config::Set(FEXCore::Config::CONFIG_VECTORTSOENABLED, "1");' in block
       and 'if (Enable && !MemcpySet) {\n      FEXCore::Config::Set(FEXCore::Config::CONFIG_MEMCPYSETTSOENABLED, "1");' in block
       and 'getenv("FEX_VECTORTSOENABLED")' in block and 'getenv("FEX_MEMCPYSETTSOENABLED")' in block)
-check('MADEIRA_RENDERER_STRICT_TSO=0 turns it off, and it is on otherwise',
-      "const bool Enable = Renderer && !(StrictOpt && StrictOpt[0] == '0');" in block
-      and 'getenv("MADEIRA_RENDERER_STRICT_TSO")' in block)
+check('off by default: only MADEIRA_RENDERER_STRICT_TSO=1 turns it on (Internship stopped with it, FINDINGS.md 5d)',
+      "const bool Enable = Renderer && StrictOpt && StrictOpt[0] == '1';" in block
+      and 'getenv("MADEIRA_RENDERER_STRICT_TSO")' in block and 'OFF BY DEFAULT' in overlay.__doc__)
 check('one log line per process names the decision', block.count('LogMan::Msg::IFmt(') == 1 and overlay.MARKER in block)
 check('nothing else in the options is touched', block.count('FEXCore::Config::Set(') == 2)
 

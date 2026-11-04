@@ -137,9 +137,15 @@ else:
     print("note: no clang; the block was not run")
 
 # ---- the farms
-inv = (root / "docs/BINARIES-WOW64.md").read_text()
-missing32 = [n for n in tools if "`i386-windows/%s`" % n not in inv]
-check("every tool ships in the i386 farm (docs/BINARIES-WOW64.md)", not missing32, missing32)
+# madeira-bcd personal: docs/BINARIES-WOW64.md is not in the public tree (tools/export-public.py keeps it out), so in
+# Taala2/bcd-personal this one check cannot run; where the inventory exists it runs as before.
+inv_path = root / "docs/BINARIES-WOW64.md"
+if inv_path.exists():
+    inv = inv_path.read_text()
+    missing32 = [n for n in tools if "`i386-windows/%s`" % n not in inv]
+    check("every tool ships in the i386 farm (docs/BINARIES-WOW64.md)", not missing32, missing32)
+else:
+    print("note: no docs/BINARIES-WOW64.md (not in the public tree); the i386 farm inventory was not checked")
 in64 = [n for n in tools for d in ("aarch64-windows", "arm64ec-windows") if (root / "app/Madeira" / d / n).exists()]
 check("no tool is in a 64-bit farm (the link never shadows a 64-bit program)", not in64, in64)
 cmdsrc = root.parent / "madeira-bcd/wine/programs/cmd/wcmdmain.c"

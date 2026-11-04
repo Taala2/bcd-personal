@@ -3452,6 +3452,11 @@ jobs:
       - name: Check fex-callret-elide
         run: python3 tests/host/check-fex-callret-elide.py
 
+      # madeira-bcd personal: the elided call-ret stack is not read at thread start (ZeroScrub's read
+      # brought ~8 MB per thread into the iOS footprint; tools/patch-fex-ios-callret-noscrub.py).
+      - name: Check the call-ret stack is not read when elided
+        run: python3 tests/host/check-fex-callret-noscrub.py
+
       # madeira-bcd: guest calls into ARM64EC code leave the JIT with BLR and their returns re-enter it with
       # RET after an L1 probe (MADEIRA_FEX_EC_RET=0 keeps BR and the loop-top re-entry).
       - name: Check fex-ec-ret

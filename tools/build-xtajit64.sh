@@ -215,6 +215,9 @@ python3 "$R/tools/patch-fex-ios-mono-bp-unlocked-miss.py" "$R/FEX/FEXCore/Source
 # Whichever pin (round 626, agent C S4; Clair Obscur's crash reporter HWMBZ2, DQQR62, CDPEFN, 1FJAWW): an exception that arrives after the
 # emulator's context was torn down goes on to Wine instead of faulting on the null context ("[fex-fault] pc=...+0x1123c4" in 624-625).
 python3 "$R/tools/patch-fex-ios-ec-teardown-ctx.py" "$R/FEX" || echo "::warning::the torn-down context guard was not applied (FEX anchor changed); xtajit64.dll is built without it"
+# madeira-bcd personal, whichever pin (both carry the call-ret elision by now): the elided call-ret stack is not read at thread
+# start; ZeroScrub's read brought ~8 MB per thread into the iOS footprint (FINDINGS.md 5b, build 17df614).
+python3 "$R/tools/patch-fex-ios-callret-noscrub.py" "$R/FEX" || echo "::warning::the call-ret no-scrub overlay was not applied (FEX anchor changed); xtajit64.dll scrubs as before"
 # Opt-in, whichever pin (round 626, agent G1 S7; Burnout Paradise 7MSNGW): MADEIRA_FEX_CPUID_CLASSIC=1 reports CPUID.1:EDX DE and PSE.
 python3 "$R/tools/patch-fex-ios-cpuid-classic.py" "$R/FEX/FEXCore/Source/Interface/Core/CPUID.cpp" || echo "::warning::the CPUID DE/PSE opt-in was not applied (FEX anchor changed); xtajit64.dll is built without it"
 # Opt-in, whichever pin (round 624, agent A S7; Borderlands GOTY Enhanced V0FQAS): the alias table has room for 1024 image copies,

@@ -19,7 +19,8 @@ step drops the changed pages only; anything it cannot vouch for is dropped whole
     fake memory map: what it drops, what it keeps and what it leaves to the caller, case by
     case (CASES below, in mode 1), and the modes of env.MADEIRA_FEX_PROTECT_DIFF: unset and log
     measure only (the default since v2 hung V.0.7), rxwhole keeps on RW and leaves RX to the
-    caller, 0 does nothing;
+    caller, 0 does nothing; the log-only count of bytes changed outside the W^X window (between
+    an RX step and the next RW step), which mode 1 cannot see;
   - tools/build-xtajit64.sh runs it once with a warning fallback and restores the file; the
     log-only overlay is gone from it; CI runs this check.
 No device is run.
@@ -205,11 +206,22 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 300; i++) { Note(true, false, 0, 0x3d000); Note(false, true, 0, 0x3d000); }
   } else if (mode == "short") {
     Note(true, false, 0, 0x3d000); Arena[0x2000] ^= 1; Note(false, true, 0, 0x3d000);
+  } else if (mode == "out") {
+    Note(true, false, 0, 0x3d000); Note(false, true, 0, 0x3d000);
+    Arena[0x5000] ^= 1;
+    Note(true, false, 0, 0x3d000); Note(false, true, 0, 0x3d000);
+    Note(true, false, 0, 0x3d000); Note(false, true, 0, 0x3d000);
+    Note(false, true, 0, 0x3d000); Arena[0x7000] ^= 1; Note(false, true, 0, 0x3d000);
+    Note(true, false, 0, 0x3d000); Note(false, true, 0, 0x3d000);
+    Note(true, false, 0x1000, 0x1000);
   } else if (mode == "sub") {
     Note(true, false, 0x500000, 0x10000); Arena[0x506000] ^= 1; Note(false, true, 0x504000, 0x4000);
     Note(true, false, 0x600000, 0x10000); Note(true, false, 0x608000, 0x10000); Note(false, true, 0x608000, 0x10000);
   }
   const IosPdCounts& N = IosPdN;
+  printf("O outchecked=%llu outpages=%llu outchanged=%llu outcycles=%llu outdiscarded=%llu\n",
+         (unsigned long long)N.OutChecked, (unsigned long long)N.OutPages, (unsigned long long)N.OutChanged,
+         (unsigned long long)N.OutCycles, (unsigned long long)N.OutDiscarded);
   printf("N toggles=%llu snaps=%llu big=%llu unreadable=%llu evicted=%llu compared=%llu pages=%llu changed=%llu nosnap=%llu kept=%llu redone=%llu tainted=%llu partial=%llu overlap=%llu manyruns=%llu calls=%d\n",
          (unsigned long long)N.Toggles, (unsigned long long)N.Snaps, (unsigned long long)N.SkipBig, (unsigned long long)N.SkipUnreadable,
          (unsigned long long)N.Evicted, (unsigned long long)N.Compared, (unsigned long long)N.Pages, (unsigned long long)N.Changed,
@@ -263,7 +275,7 @@ else:
                 if value is not None:
                     env['MADEIRA_FEX_PROTECT_DIFF'] = value
                 out = subprocess.run([str(exe), mode], capture_output=True, text=True, env=env).stdout
-                counts = {k: int(v) for k, v in (kv.split('=') for kv in out.splitlines()[-1].split()[1:])}
+                counts = {k: int(v) for line in out.splitlines()[-2:] for k, v in (kv.split('=') for kv in line.split()[1:])}
                 return out, counts
 
             out, n = run('cases', '1')
@@ -322,6 +334,22 @@ else:
                   rs == ['rw 500000+10000 handled=1 drops=[]', 'rx 504000+4000 handled=0 drops=[500000+4000,508000+8000]',
                          'rw 600000+10000 handled=1 drops=[]', 'rw 608000+10000 handled=1 drops=[600000+10000]',
                          'rx 608000+10000 handled=0 drops=[]'], repr(rs))
+            # Outside the W^X window: bytes changed between an RX step and the next RW step of the same range.
+            for value in ('log', 'rxwhole', '1'):
+                out, n = run('out', value)
+                logs = [l for l in out.splitlines() if 'outside #' in l]
+                check('outside the window (' + value + '): one change counted, one RW step with changes said, '
+                      'a second RX step restarts from its bytes, a partial range discards the closed copy',
+                      n['outchecked'] == 3 and n['outpages'] == 3 * 61 and n['outchanged'] == 1 and n['outcycles'] == 1
+                      and n['outdiscarded'] == 1 and len(logs) == 1 and 'outside #1 ' in logs[0]
+                      and ': 1 of 61 pages changed since the last RX step' in logs[0], str(n) + ' ' + repr(logs))
+            out, n = run('out', 'log')
+            check('outside the window, measure only: the helper drops nothing and handles nothing',
+                  n['calls'] == 0 and all('handled=0 drops=[]' in l for l in out.splitlines() if l.startswith('R ')), out)
+            out, n = run('out', '1')
+            rs = [l[2:] for l in out.splitlines() if l.startswith('R ')]
+            check('mode 1 cannot see a change made outside the window (the blind spot this measures); closed copies cause no drops',
+                  rs[3] == 'rx 0+3d000 handled=1 drops=[]' and n['calls'] == 0 and rs[-1] == 'rw 1000+1000 handled=1 drops=[]', repr(rs))
             out, n = run('sub', 'log')
             rs = [l[2:] for l in out.splitlines() if l.startswith('R ')]
             check('measure only: the helper drops nothing itself in the same sequence',

@@ -25,18 +25,24 @@ Any other executable protection is handled as before (the whole range), and pend
 only partly meets are dropped whole. FEX's own write traps, frees and section unmaps are
 untouched: they still invalidate whatever they did.
 
-Log lines: [protect-diff] protect-diff-v2 ... (first eight compares, totals every 256th, one
-line when the first page is kept). env.MADEIRA_FEX_PROTECT_DIFF: unset or 1 on; log = measure
-only (FEX drops whole ranges, as the log-only version); 0 = off, upstream behaviour.
+v2 (default on, CI 41999889967) hung V.0.7 on its loading screen; the same build with
+log loaded (FINDINGS.md 5e). Why is not known, so v3 measures only by default:
+env.MADEIRA_FEX_PROTECT_DIFF unset or log = measure only (FEX drops whole ranges on both steps,
+as upstream); 1 = on, as v2; rxwhole = a diagnostic half-way: the RW step keeps the range as
+in 1, the RX step drops the whole range as upstream (only the RW-step drop is skipped);
+0 = off, nothing copied or logged.
+
+Log lines: [protect-diff] protect-diff-v3 ... (the mode once per process, first eight
+compares, totals every 256th, one line when the first page is kept).
 
 Applied by tools/build-xtajit64.sh for whichever pin; the pinned submodule is never updated.
 """
 from pathlib import Path
 import sys
 
-MARKER = "protect-diff-v2 madeira-bcd"
-SUMMARY = ("FEX: a code range's W^X cycle drops only the pages whose bytes changed "
-           "([protect-diff]; env.MADEIRA_FEX_PROTECT_DIFF=log measures only, 0 restores whole-range drops)")
+MARKER = "protect-diff-v3 madeira-bcd"
+SUMMARY = ("FEX: a code range's W^X cycle is measured, whole ranges still dropped "
+           "([protect-diff]; env.MADEIRA_FEX_PROTECT_DIFF=1 drops only the changed pages, rxwhole skips only the RW-step drop, 0 = off)")
 
 REL = "Source/Windows/Common/InvalidationTracker.cpp"
 
@@ -50,8 +56,8 @@ HELPER = (
     "/* " + MARKER + " (tools/patch-fex-ios-protect-diff.py). A code range made non-executable is copied\n"
     " * and keeps its translations; the next executable protection over it drops only the pages whose\n"
     " * bytes changed. Anything this cannot vouch for is dropped whole, as before. Static memory only:\n"
-    " * nothing is allocated inside a memory notification. env.MADEIRA_FEX_PROTECT_DIFF: log = measure\n"
-    " * only, 0 = off. */\n"
+    " * nothing is allocated inside a memory notification. env.MADEIRA_FEX_PROTECT_DIFF: unset or log =\n"
+    " * measure only (the default: 1 hung V.0.7), 1 = on, rxwhole = keep on RW, drop whole on RX, 0 = off. */\n"
     "#ifdef FEX_IOS_HOST\n"
     "namespace {\n"
     "constexpr int IosPdSlots = 32;\n"
@@ -108,20 +114,28 @@ HELPER = (
     "  return false;\n"
     "}\n"
     "\n"
-    "// 0 off, 1 on, 2 measure only.\n"
+    "// 0 off, 1 on, 2 measure only (unset, log or anything else), 3 rxwhole.\n"
     "int IosPdMode() {\n"
     "  static const int Mode = [] {\n"
     "    const char* Opt = getenv(\"MADEIRA_FEX_PROTECT_DIFF\");\n"
     "    if (Opt && Opt[0] == '0') {\n"
     "      return 0;\n"
     "    }\n"
-    "    if (Opt && Opt[0] == 'l') {\n"
-    "      return 2;\n"
+    "    if (Opt && Opt[0] == '1') {\n"
+    "      return 1;\n"
     "    }\n"
-    "    return 1;\n"
+    "    if (Opt && Opt[0] == 'r') {\n"
+    "      return 3;\n"
+    "    }\n"
+    "    return 2;\n"
     "  }();\n"
     "  return Mode;\n"
     "}\n"
+    "\n"
+    "const char* IosPdModeName(int Mode) {\n"
+    "  return Mode == 1 ? \"on\" : Mode == 3 ? \"rxwhole\" : \"measure only\";\n"
+    "}\n"
+    "std::atomic_flag IosPdModeSaid = ATOMIC_FLAG_INIT;\n"
     "\n"
     "// Every page of [Base, Base + Size) committed, readable, not a guard page.\n"
     "bool IosPdReadable(uint64_t Base, uint64_t Size) {\n"
@@ -171,7 +185,14 @@ HELPER = (
     "  if (!Mode) {\n"
     "    return false;\n"
     "  }\n"
-    "  const bool Fix = Mode == 1;\n"
+    "  if (!IosPdModeSaid.test_and_set(std::memory_order_relaxed)) {\n"
+    "    LogMan::Msg::EFmt(\"[protect-diff] protect-diff-v3 mode: {} (env.MADEIRA_FEX_PROTECT_DIFF: unset or log = measure only, \"\n"
+    "                      \"1 = drop only the changed pages, rxwhole = skip only the RW-step drop, 0 = off)\",\n"
+    "                      IosPdModeName(Mode));\n"
+    "  }\n"
+    "  // KeepRw: the RW step defers its drop (1 and rxwhole). PerPage: the RX step drops only the changed pages (1).\n"
+    "  const bool KeepRw = Mode == 1 || Mode == 3;\n"
+    "  const bool PerPage = Mode == 1;\n"
     "  const uint64_t End = Base + Size;\n"
     "  IosPdRange Drop[IosPdSlots + IosPdMaxRuns + 2];\n"
     "  int NDrop = 0;\n"
@@ -217,10 +238,10 @@ HELPER = (
     "      memcpy(IosPdData[Pick], reinterpret_cast<const void*>(Base), Size);\n"
     "      IosPdSlotTable[Pick] = {Base, Size, ++IosPdStampNext, Seq0};\n"
     "      IosPdN.Snaps++;\n"
-    "      Handled = Fix;\n"
+    "      Handled = KeepRw;\n"
     "    }\n"
     "    IosPdLockDrop();\n"
-    "    if (Fix) {\n"
+    "    if (KeepRw) {\n"
     "      for (int i = 0; i < NDrop; i++) {\n"
     "        Inval(Drop[i].Base, Drop[i].Size);\n"
     "      }\n"
@@ -289,7 +310,7 @@ HELPER = (
     "      IosPdN.Tainted++;\n"
     "    } else if (ManyRuns) {\n"
     "      IosPdN.ManyRuns++;\n"
-    "    } else if (Fix) {\n"
+    "    } else if (PerPage) {\n"
     "      for (int r = 0; r < NRuns; r++) {\n"
     "        Drop[NDrop++] = Runs[r];\n"
     "      }\n"
@@ -313,25 +334,26 @@ HELPER = (
     "  }\n"
     "  IosPdLockDrop();\n"
     "\n"
-    "  if (Fix) {\n"
+    "  // rxwhole: the caller drops the range itself (not handled); what of a copy lies outside it is dropped here.\n"
+    "  if (KeepRw) {\n"
     "    for (int i = 0; i < NDrop; i++) {\n"
     "      Inval(Drop[i].Base, Drop[i].Size);\n"
     "    }\n"
     "  }\n"
     "  if (SayKept) {\n"
-    "    LogMan::Msg::EFmt(\"[protect-diff] protect-diff-v2: the first unchanged page of a W^X cycle kept its translations \"\n"
-    "                      \"({:#x}-{:#x}: {} of {} pages changed; env.MADEIRA_FEX_PROTECT_DIFF=0 drops whole ranges)\",\n"
+    "    LogMan::Msg::EFmt(\"[protect-diff] protect-diff-v3: the first unchanged page of a W^X cycle kept its translations \"\n"
+    "                      \"({:#x}-{:#x}: {} of {} pages changed; env.MADEIRA_FEX_PROTECT_DIFF=log drops whole ranges)\",\n"
     "                      SayBase, SayEnd, SayChanged, SayPages);\n"
     "  }\n"
     "  if (Say && SayN <= 8) {\n"
-    "    LogMan::Msg::EFmt(\"[protect-diff] protect-diff-v2 #{} {:#x}-{:#x} pages={} changed={}\", SayN, SayBase, SayEnd, SayPages,\n"
+    "    LogMan::Msg::EFmt(\"[protect-diff] protect-diff-v3 #{} {:#x}-{:#x} pages={} changed={}\", SayN, SayBase, SayEnd, SayPages,\n"
     "                      SayChanged);\n"
     "  }\n"
     "  if (Say && !(SayN & 255)) {\n"
-    "    LogMan::Msg::EFmt(\"[protect-diff] protect-diff-v2 totals ({}): toggles={} copied={} compared={} pages={} changed={} ({}%) \"\n"
+    "    LogMan::Msg::EFmt(\"[protect-diff] protect-diff-v3 totals ({}): toggles={} copied={} compared={} pages={} changed={} ({}%) \"\n"
     "                      \"kept={} redone={} whole: tainted={} many-runs={} partial={} overlap={} evicted={} \"\n"
     "                      \"exec-without-copy={} skipped: over-256KB={} unreadable={} unreadable-at-compare={} busy={}\",\n"
-    "                      Fix ? \"on\" : \"measure only\", Copy.Toggles, Copy.Snaps, Copy.Compared, Copy.Pages, Copy.Changed,\n"
+    "                      IosPdModeName(Mode), Copy.Toggles, Copy.Snaps, Copy.Compared, Copy.Pages, Copy.Changed,\n"
     "                      Copy.Pages ? Copy.Changed * 100 / Copy.Pages : 0, Copy.Kept, Copy.Redone, Copy.Tainted, Copy.ManyRuns,\n"
     "                      Copy.Partial, Copy.Overlap, Copy.Evicted, Copy.NoSnap, Copy.SkipBig, Copy.SkipUnreadable,\n"
     "                      Copy.CompareUnreadable, IosPdBusy.load(std::memory_order_relaxed));\n"

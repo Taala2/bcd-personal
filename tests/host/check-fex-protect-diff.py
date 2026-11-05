@@ -17,7 +17,9 @@ step drops the changed pages only; anything it cannot vouch for is dropped whole
     released;
   - the helper, cut out of the patched file and compiled on the host with stubs, against a
     fake memory map: what it drops, what it keeps and what it leaves to the caller, case by
-    case (CASES below), and the three modes of env.MADEIRA_FEX_PROTECT_DIFF;
+    case (CASES below, in mode 1), and the modes of env.MADEIRA_FEX_PROTECT_DIFF: unset and log
+    measure only (the default since v2 hung V.0.7), rxwhole keeps on RW and leaves RX to the
+    caller, 0 does nothing;
   - tools/build-xtajit64.sh runs it once with a warning fallback and restores the file; the
     log-only overlay is gone from it; CI runs this check.
 No device is run.
@@ -203,6 +205,9 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 300; i++) { Note(true, false, 0, 0x3d000); Note(false, true, 0, 0x3d000); }
   } else if (mode == "short") {
     Note(true, false, 0, 0x3d000); Arena[0x2000] ^= 1; Note(false, true, 0, 0x3d000);
+  } else if (mode == "sub") {
+    Note(true, false, 0x500000, 0x10000); Arena[0x506000] ^= 1; Note(false, true, 0x504000, 0x4000);
+    Note(true, false, 0x600000, 0x10000); Note(true, false, 0x608000, 0x10000); Note(false, true, 0x608000, 0x10000);
   }
   const IosPdCounts& N = IosPdN;
   printf("N toggles=%llu snaps=%llu big=%llu unreadable=%llu evicted=%llu compared=%llu pages=%llu changed=%llu nosnap=%llu kept=%llu redone=%llu tainted=%llu partial=%llu overlap=%llu manyruns=%llu calls=%d\n",
@@ -261,7 +266,8 @@ else:
                 counts = {k: int(v) for k, v in (kv.split('=') for kv in out.splitlines()[-1].split()[1:])}
                 return out, counts
 
-            out, n = run('cases')
+            out, n = run('cases', '1')
+            check('mode 1 says so once', out.count('protect-diff-v3 mode: on (') == 1, out[:400])
             got, case = {}, None
             for line in out.splitlines():
                 if line.startswith('C '):
@@ -282,20 +288,44 @@ else:
                   n['kept'] + n['redone'] == 61 + 61 + 16 + 4 + 16 and n['redone'] == 3 + 1, str(n))
             check('the first kept page is said once', out.count('the first unchanged page of a W^X cycle kept its translations') == 1, out[:600])
 
-            out, n = run('many')
+            out, n = run('many', '1')
             lines = [l for l in out.splitlines() if l.startswith('LOG ')]
             check('300 unchanged cycles: nothing dropped, all 18300 pages kept',
                   n['compared'] == 300 and n['kept'] == 300 * 61 and n['calls'] == 0
                   and all('drops=[]' in l and 'handled=1' in l for l in out.splitlines() if l.startswith('R ')), str(n))
             check('eight compare lines, the first-kept line, one totals line at the 256th',
-                  sum('protect-diff-v2 #' in l for l in lines) == 8 and sum('totals (on):' in l for l in lines) == 1
+                  sum('protect-diff-v3 #' in l for l in lines) == 8 and sum('totals (on):' in l for l in lines) == 1
                   and 'toggles=256 copied=256 compared=256 pages=15616 changed=0 (0%) kept=15616 redone=0' in lines[-1], '\n'.join(lines[-2:]))
 
-            out, n = run('short', 'log')
-            rs = [l for l in out.splitlines() if l.startswith('R ')]
-            check('MADEIRA_FEX_PROTECT_DIFF=log: measured, never handled, nothing dropped by the helper',
-                  n['compared'] == 1 and n['changed'] == 1 and n['kept'] == 0 and n['calls'] == 0
-                  and len(rs) == 2 and all('handled=0 drops=[]' in l for l in rs), out)
+            for value, what in (('log', 'MADEIRA_FEX_PROTECT_DIFF=log'), (None, 'MADEIRA_FEX_PROTECT_DIFF unset (the default)'),
+                                ('yes', 'an unknown MADEIRA_FEX_PROTECT_DIFF value')):
+                out, n = run('short', value)
+                rs = [l for l in out.splitlines() if l.startswith('R ')]
+                check(what + ': measured only, never handled, nothing dropped by the helper',
+                      n['compared'] == 1 and n['changed'] == 1 and n['kept'] == 0 and n['calls'] == 0
+                      and len(rs) == 2 and all('handled=0 drops=[]' in l for l in rs)
+                      and out.count('protect-diff-v3 mode: measure only (') == 1, out)
+            out, n = run('many')
+            check('300 cycles by default: totals say measure only, nothing kept',
+                  sum('totals (measure only):' in l for l in out.splitlines()) == 1 and n['kept'] == 0 and n['calls'] == 0
+                  and 'first unchanged page' not in out, str(n))
+
+            out, n = run('short', 'rxwhole')
+            rs = [l[2:] for l in out.splitlines() if l.startswith('R ')]
+            check('rxwhole: RW keeps the range, RX leaves the whole range to the caller, nothing kept per page',
+                  rs == ['rw 0+3d000 handled=1 drops=[]', 'rx 0+3d000 handled=0 drops=[]']
+                  and n['compared'] == 1 and n['changed'] == 1 and n['kept'] == 0 and n['calls'] == 0
+                  and out.count('protect-diff-v3 mode: rxwhole (') == 1 and 'first unchanged page' not in out, out)
+            out, n = run('sub', 'rxwhole')
+            rs = [l[2:] for l in out.splitlines() if l.startswith('R ')]
+            check('rxwhole: what of a copy lies outside the RX range, and a copy a new RW range overlaps, are dropped here',
+                  rs == ['rw 500000+10000 handled=1 drops=[]', 'rx 504000+4000 handled=0 drops=[500000+4000,508000+8000]',
+                         'rw 600000+10000 handled=1 drops=[]', 'rw 608000+10000 handled=1 drops=[600000+10000]',
+                         'rx 608000+10000 handled=0 drops=[]'], repr(rs))
+            out, n = run('sub', 'log')
+            rs = [l[2:] for l in out.splitlines() if l.startswith('R ')]
+            check('measure only: the helper drops nothing itself in the same sequence',
+                  n['calls'] == 0 and len(rs) == 5 and all('handled=0 drops=[]' in l for l in rs), repr(rs))
             out, n = run('short', '0')
             check('MADEIRA_FEX_PROTECT_DIFF=0: nothing copied, compared, handled or logged',
                   n['toggles'] == 0 and n['compared'] == 0 and 'LOG ' not in out

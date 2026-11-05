@@ -3546,10 +3546,10 @@ jobs:
       - name: Check the lookup cache is zeroed by decommit
         run: python3 tests/host/check-fex-l1-reclaim.py
 
-      # madeira-bcd personal: log only, a code range's W^X protection cycle is compared page by page ([protect-diff];
-      # tools/patch-fex-ios-protect-diff-log.py; FINDINGS.md 5e, V.0.7's renderer recompiled V8 code after every cycle).
-      - name: Check the W^X protection-cycle log
-        run: python3 tests/host/check-fex-protect-diff-log.py
+      # madeira-bcd personal: a code range's W^X protection cycle drops only the pages whose bytes changed ([protect-diff];
+      # tools/patch-fex-ios-protect-diff.py; FINDINGS.md 5e, 3% of V8's pages changed per cycle in V.0.7).
+      - name: Check W^X cycles drop only changed pages
+        run: python3 tests/host/check-fex-protect-diff.py
 
       # madeira-bcd: guest calls into ARM64EC code leave the JIT with BLR and their returns re-enter it with
       # RET after an L1 probe (MADEIRA_FEX_EC_RET=0 keeps BR and the loop-top re-entry).

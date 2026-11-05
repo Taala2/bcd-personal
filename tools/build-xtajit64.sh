@@ -232,9 +232,9 @@ python3 "$R/tools/patch-fex-ios-renderer-tso.py" "$R/FEX" || echo "::warning::th
 # madeira-bcd personal, whichever pin: a new thread's lookup cache is zeroed by decommit + commit instead of ZeroScrub's
 # read, which instantiates its 2 MB on iOS (3791 scrubs, all l1-stale=0x0; FINDINGS.md 5b, 2026-11-04).
 python3 "$R/tools/patch-fex-ios-l1-reclaim.py" "$R/FEX" || echo "::warning::the L1 reclaim overlay was not applied (FEX anchor changed); the lookup cache is scrubbed by reading as before"
-# madeira-bcd personal, whichever pin, log only: a code range's W^X protection cycle (V8's write-protect-code-memory) is compared
-# page by page and counted ([protect-diff]); FEX still drops the whole range (FINDINGS.md 5e, V.0.7 2026-11-05).
-python3 "$R/tools/patch-fex-ios-protect-diff-log.py" "$R/FEX" || echo "::warning::the protect-diff log was not applied (FEX anchor changed); xtajit64.dll is built without it"
+# madeira-bcd personal, whichever pin: a code range's W^X protection cycle (V8's write-protect-code-memory) drops only the
+# pages whose bytes changed, 3% of them in V.0.7 (FINDINGS.md 5e); env.MADEIRA_FEX_PROTECT_DIFF=log measures only, 0 = off.
+python3 "$R/tools/patch-fex-ios-protect-diff.py" "$R/FEX" || echo "::warning::the protect-diff overlay was not applied (FEX anchor changed); W^X cycles drop whole ranges as before"
 # Opt-in, whichever pin (round 626, agent G1 S7; Burnout Paradise 7MSNGW): MADEIRA_FEX_CPUID_CLASSIC=1 reports CPUID.1:EDX DE and PSE.
 python3 "$R/tools/patch-fex-ios-cpuid-classic.py" "$R/FEX/FEXCore/Source/Interface/Core/CPUID.cpp" || echo "::warning::the CPUID DE/PSE opt-in was not applied (FEX anchor changed); xtajit64.dll is built without it"
 # Opt-in, whichever pin (round 624, agent A S7; Borderlands GOTY Enhanced V0FQAS): the alias table has room for 1024 image copies,

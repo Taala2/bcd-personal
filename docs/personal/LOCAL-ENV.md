@@ -35,7 +35,15 @@ bash tools/local-fex-check.sh --keep     # оставить патчи нало�
 - Host-тесты `--tests`: 14 проходят. 13 здесь пройти не могут, и CI запускает их сам:
   - `POSIX` — фикстура на C требует POSIX (`setenv`, `sys/mman.h`, `dprintf`, ASan) или `tar` из stdin;
   - `WIN` — `check-fex-arena-census` (фикстура печатает адрес как `long`, а в Windows он 32-битный) и `check-fex-sha-off` (сравнивает пути с `/`, а Windows даёт `\`).
-- Чтобы эти 13 шли и здесь, нужен WSL с Ubuntu. Его включает пользователь сам (`wsl --install`, это системный компонент Windows, после установки нужна перезагрузка). Затем в Ubuntu: `sudo apt install clang python3 python3-yaml`.
+- Чтобы эти 13 шли и здесь, нужен WSL с Ubuntu. Его включает пользователь сам: это системный компонент Windows (2026-11-06 на этой машине `wsl --status` отвечает `WSL_E_WSL_OPTIONAL_COMPONENT_REQUIRED`, то есть он не включён).
+  1. PowerShell от имени администратора: `wsl --install -d Ubuntu`, затем перезагрузка; при первом запуске Ubuntu спросит имя и пароль пользователя Linux.
+  2. В Ubuntu: `sudo apt update && sudo apt install -y build-essential git python3 python3-yaml`.
+  3. Там же: `git config --global --add safe.directory '*'`. Иначе git откажется работать с репозиторием на `/mnt/c`, владелец которого — пользователь Windows.
+- С WSL `--tests` сам находит его (нужны `python3`, `cc` и `git`), запускает проверки `POSIX`/`WIN` ещё раз там, на том же checkout через `/mnt/c`, и считает их результат как обычный (`ok … (WSL)` или `FAIL … (WSL, log ….wsl)`). Без WSL всё как раньше.
+  - `cc` в WSL идёт через обёртку с `-D_DEFAULT_SOURCE`: фикстуры написаны под macOS, где `-std=c11` не прячет `setenv`/`dprintf`, а glibc прячет. Сами проверки (они из апстрима BCD) не меняются.
+  - `CI` — проверка компилирует с `compile_commands.json` локальной сборки, а в нём пути Windows (`check-fex-mono-bp-unlocked-miss`); её реальную компиляцию делает только CI.
+  - `DEP` — в WSL нет модуля Python. `check-launcher-smc` нужен `unicorn`: `sudo apt install -y python3-unicorn`. CI эту проверку не запускает (`build-ipa.yml`, «Not in the workflow»).
+- Первый прогон с WSL (2026-11-06, Ubuntu 24.04, WSL2): из 13 проверок 11 прошли, 1 `CI`, 1 `DEP`; весь `--tests` около 3,5 мин.
 - Скрипт задаёт `PYTHONUTF8=1`: без этого часть тестов падает на кодировке cp1251 при чтении исходников.
 - Список патчей скрипт каждый раз читает из `tools/build-xtajit64.sh` (ветку для текущего пина и строки «для любого пина»), так что новый патч, добавленный туда, подхватывается сам.
 - Готовая DLL — `FEX/build-arm64ec/Bin/libarm64ecfex.dll`. В `app/Madeira` она **не** копируется.

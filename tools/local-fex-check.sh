@@ -129,15 +129,45 @@ if [ "$TESTS" = 1 ]; then
         [tests/host/check-fex-sha-off.py]="it compares source paths with '/', Windows gives '\\'"
     )
     winsig='AssertionError|app\\\\Madeira'
+    # With a WSL distribution that has python3, cc and git (docs/personal/LOCAL-ENV.md), a POSIX or WIN check is run
+    # again there, on this same checkout through /mnt/c, and its result counts like any other. Without one they are
+    # left to CI as before. MSYS_NO_PATHCONV keeps Git Bash from rewriting the arguments meant for Linux.
+    wsl_ok=0
+    if command -v wsl.exe > /dev/null 2>&1 \
+        && MSYS_NO_PATHCONV=1 wsl.exe -e sh -c 'command -v python3 && command -v cc && command -v git' > /dev/null 2>&1; then
+        wsl_ok=1
+        echo "  (WSL found: POSIX and WIN checks are run again there)"
+    fi
+    # The fixtures are written for macOS, where -std=c11 still declares setenv and dprintf; glibc hides them
+    # unless _DEFAULT_SOURCE is set, so cc in WSL is a wrapper that adds it (the upstream checks stay as they are).
+    run_wsl() {
+        MSYS_NO_PATHCONV=1 wsl.exe --cd "$(pwd -W)" -e sh -c '
+            d=/tmp/bcd-local-cc; mkdir -p "$d"
+            printf "#!/bin/sh\nexec /usr/bin/cc -D_DEFAULT_SOURCE \"\$@\"\n" > "$d/cc"; chmod +x "$d/cc"
+            PATH="$d:$PATH" PYTHONUTF8=1 exec python3 "$1"' sh "$1"
+    }
+    # A failure in WSL that only says the local build is a Windows one is left to CI, like a POSIX one here.
+    wslonly='No such file or directory: .C:/'
     tfail=0; nposix=0
     for t in $( (ls tests/host/check-fex-*.py; git grep -l -E 'build-xtajit64\.sh' -- 'tests/host/check-*.py') | sort -u); do
         log="$B.$(basename "$t" .py).log"
-        if python "$t" > "$log" 2>&1; then echo "  ok    $t"
-        elif [ -n "${WINONLY[$t]:-}" ] && grep -qE "$winsig" "$log"; then echo "  WIN   $t (${WINONLY[$t]})"; nposix=$((nposix + 1))
-        elif grep -qE "$posix" "$log"; then echo "  POSIX $t (needs a POSIX host: CI or WSL)"; nposix=$((nposix + 1))
-        else echo "  FAIL  $t (log $log)"; tfail=1; fi
+        if python "$t" > "$log" 2>&1; then echo "  ok    $t"; continue; fi
+        why=''
+        if [ -n "${WINONLY[$t]:-}" ] && grep -qE "$winsig" "$log"; then why="WIN   $t (${WINONLY[$t]})"
+        elif grep -qE "$posix" "$log"; then why="POSIX $t (needs a POSIX host: CI or WSL)"; fi
+        if [ -z "$why" ]; then echo "  FAIL  $t (log $log)"; tfail=1
+        elif [ $wsl_ok = 1 ]; then
+            if run_wsl "$t" > "$log.wsl" 2>&1; then echo "  ok    $t (WSL)"
+            elif grep -qE "$wslonly" "$log.wsl"; then
+                echo "  CI    $t (it compiles with the local build's compile_commands.json, which has Windows paths)"
+                nposix=$((nposix + 1))
+            elif mod=$(grep -oE "No module named '[^']+'" "$log.wsl" | head -1) && [ -n "$mod" ]; then
+                echo "  DEP   $t (WSL: $mod; docs/personal/LOCAL-ENV.md)"
+                nposix=$((nposix + 1))
+            else echo "  FAIL  $t (WSL, log $log.wsl)"; tfail=1; fi
+        else echo "  $why"; nposix=$((nposix + 1)); fi
     done
-    [ $nposix = 0 ] || echo "  $nposix check(s) cannot pass on this host (POSIX/WIN above): CI runs them"
+    [ $nposix = 0 ] || echo "  $nposix check(s) cannot pass on this host (POSIX/WIN above): CI runs them, or WSL (docs/personal/LOCAL-ENV.md)"
     [ $tfail = 0 ] || exit 1
 fi
 echo "PASS"

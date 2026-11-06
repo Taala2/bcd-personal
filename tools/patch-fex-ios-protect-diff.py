@@ -28,7 +28,10 @@ untouched: they still invalidate whatever they did.
 v2 (default on, CI 41999889967) hung V.0.7 on its loading screen; the same build with
 log loaded (FINDINGS.md 5e). Why is not known, so v3 measures only by default:
 env.MADEIRA_FEX_PROTECT_DIFF unset or log = measure only (FEX drops whole ranges on both steps,
-as upstream); 1 = on, as v2; rxwhole = a diagnostic half-way: the RW step keeps the range as
+as upstream); 1 = on: as v2, and since v2 still hung (with the call-ret stack kept too) also
+the RW step drops what changed since the last RX step, and a range with no closed copy to
+compare is dropped whole on the RW step as upstream, so every byte change between two RX steps
+is dropped (if this still hangs, the cause is not a byte change); rxwhole = a diagnostic half-way: the RW step keeps the range as
 in 1, the RX step drops the whole range as upstream (only the RW-step drop is skipped);
 0 = off, nothing copied or logged.
 
@@ -86,7 +89,7 @@ HELPER = (
     "struct IosPdCounts {\n"
     "  uint64_t Toggles, Snaps, SkipBig, SkipUnreadable, Evicted, Compared, Pages, Changed, NoSnap, CompareUnreadable;\n"
     "  uint64_t Kept, Redone, Tainted, Partial, Overlap, ManyRuns;\n"
-    "  uint64_t OutChecked, OutPages, OutChanged, OutCycles, OutDiscarded;\n"
+    "  uint64_t OutChecked, OutPages, OutChanged, OutCycles, OutDiscarded, FirstWhole, OutWhole;\n"
     "};\n"
     "IosPdCounts IosPdN;\n"
     "uint64_t IosPdStampNext;\n"
@@ -216,6 +219,9 @@ HELPER = (
     "    }\n"
     "    IosPdN.Toggles++;\n"
     "    int Reuse = -1;\n"
+    "    IosPdRange OutRuns[IosPdMaxRuns];\n"
+    "    int NOutRuns = 0;\n"
+    "    bool OutMany = false;\n"
     "    bool SayOut = false;\n"
     "    uint64_t OutN = 0, OutPages = 0, OutChanged = 0, OutFirst = 0, OutOld = 0, OutNew = 0;\n"
     "    for (int i = 0; i < IosPdSlots; i++) {\n"
@@ -237,6 +243,13 @@ HELPER = (
     "          if (memcmp(IosPdData[i] + (P - Base), reinterpret_cast<const void*>(P), Len) != 0) {\n"
     "            if (!Changed++) {\n"
     "              First = P;\n"
+    "            }\n"
+    "            if (NOutRuns && OutRuns[NOutRuns - 1].Base + OutRuns[NOutRuns - 1].Size == P) {\n"
+    "              OutRuns[NOutRuns - 1].Size += Len;\n"
+    "            } else if (NOutRuns < IosPdMaxRuns) {\n"
+    "              OutRuns[NOutRuns++] = {P, Len};\n"
+    "            } else {\n"
+    "              OutMany = true;\n"
     "            }\n"
     "          }\n"
     "        }\n"
@@ -295,6 +308,23 @@ HELPER = (
     "      IosPdSlotTable[Pick] = {Base, Size, ++IosPdStampNext, Seq0, false};\n"
     "      IosPdN.Snaps++;\n"
     "      Handled = KeepRw;\n"
+    "      if (PerPage) {\n"
+    "        // Mode 1 drops at the RW step whatever changed since the last RX step (outside the window), so with\n"
+    "        // both compares every byte change between two RX steps is dropped, as upstream's two whole-range\n"
+    "        // drops would. With no closed copy to compare (the range's first cycle here, or the copy was\n"
+    "        // discarded or evicted) the caller drops the whole range now, as upstream; the RX step is per page.\n"
+    "        if (Reuse < 0) {\n"
+    "          Handled = false;\n"
+    "          IosPdN.FirstWhole++;\n"
+    "        } else if (OutMany) {\n"
+    "          Handled = false;\n"
+    "          IosPdN.OutWhole++;\n"
+    "        } else {\n"
+    "          for (int r = 0; r < NOutRuns; r++) {\n"
+    "            Drop[NDrop++] = OutRuns[r];\n"
+    "          }\n"
+    "        }\n"
+    "      }\n"
     "    }\n"
     "    IosPdLockDrop();\n"
     "    if (KeepRw) {\n"
@@ -426,12 +456,13 @@ HELPER = (
     "    LogMan::Msg::EFmt(\"[protect-diff] protect-diff-v3 totals ({}): toggles={} copied={} compared={} pages={} changed={} ({}%) \"\n"
     "                      \"kept={} redone={} whole: tainted={} many-runs={} partial={} overlap={} evicted={} \"\n"
     "                      \"exec-without-copy={} skipped: over-256KB={} unreadable={} unreadable-at-compare={} busy={} \"\n"
-    "                      \"outside the window: checked={} pages={} changed={} cycles-with-changes={} discarded={}\",\n"
+    "                      \"outside the window: checked={} pages={} changed={} cycles-with-changes={} discarded={} \"\n"
+    "                      \"RW whole (mode 1): no-closed-copy={} many-runs={}\",\n"
     "                      IosPdModeName(Mode), Copy.Toggles, Copy.Snaps, Copy.Compared, Copy.Pages, Copy.Changed,\n"
     "                      Copy.Pages ? Copy.Changed * 100 / Copy.Pages : 0, Copy.Kept, Copy.Redone, Copy.Tainted, Copy.ManyRuns,\n"
     "                      Copy.Partial, Copy.Overlap, Copy.Evicted, Copy.NoSnap, Copy.SkipBig, Copy.SkipUnreadable,\n"
     "                      Copy.CompareUnreadable, IosPdBusy.load(std::memory_order_relaxed), Copy.OutChecked, Copy.OutPages,\n"
-    "                      Copy.OutChanged, Copy.OutCycles, Copy.OutDiscarded);\n"
+    "                      Copy.OutChanged, Copy.OutCycles, Copy.OutDiscarded, Copy.FirstWhole, Copy.OutWhole);\n"
     "  }\n"
     "  return Handled;\n"
     "}\n"

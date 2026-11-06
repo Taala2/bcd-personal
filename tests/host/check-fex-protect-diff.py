@@ -219,9 +219,10 @@ int main(int argc, char** argv) {
     Note(true, false, 0x600000, 0x10000); Note(true, false, 0x608000, 0x10000); Note(false, true, 0x608000, 0x10000);
   }
   const IosPdCounts& N = IosPdN;
-  printf("O outchecked=%llu outpages=%llu outchanged=%llu outcycles=%llu outdiscarded=%llu\n",
+  printf("O outchecked=%llu outpages=%llu outchanged=%llu outcycles=%llu outdiscarded=%llu firstwhole=%llu outwhole=%llu\n",
          (unsigned long long)N.OutChecked, (unsigned long long)N.OutPages, (unsigned long long)N.OutChanged,
-         (unsigned long long)N.OutCycles, (unsigned long long)N.OutDiscarded);
+         (unsigned long long)N.OutCycles, (unsigned long long)N.OutDiscarded, (unsigned long long)N.FirstWhole,
+         (unsigned long long)N.OutWhole);
   printf("N toggles=%llu snaps=%llu big=%llu unreadable=%llu evicted=%llu compared=%llu pages=%llu changed=%llu nosnap=%llu kept=%llu redone=%llu tainted=%llu partial=%llu overlap=%llu manyruns=%llu calls=%d\n",
          (unsigned long long)N.Toggles, (unsigned long long)N.Snaps, (unsigned long long)N.SkipBig, (unsigned long long)N.SkipUnreadable,
          (unsigned long long)N.Evicted, (unsigned long long)N.Compared, (unsigned long long)N.Pages, (unsigned long long)N.Changed,
@@ -233,27 +234,27 @@ int main(int argc, char** argv) {
 
 # Case: the R lines each Note() prints, in order (handled flag and the drops it made itself).
 CASES = {
-    'cycle': (['rw 0+3d000 handled=1 drops=[]', 'rx 0+3d000 handled=1 drops=[2000+1000,3b000+2000]'],
-              'RW keeps the range; RX drops the changed pages only, adjacent ones as one run'),
+    'cycle': (['rw 0+3d000 handled=0 drops=[]', 'rx 0+3d000 handled=1 drops=[2000+1000,3b000+2000]'],
+              'a first cycle: RW is dropped whole by the caller (no closed copy); RX drops the changed pages only, adjacent ones as one run'),
     'unchanged': (['rw 0+3d000 handled=1 drops=[]', 'rx 0+3d000 handled=1 drops=[]'],
                   'an unchanged cycle drops nothing'),
     'nocopy': (['rx 100000+4000 handled=0 drops=[]'], 'an executable protection with no copy is left to the caller (whole range)'),
     'big': (['rw 200000+41000 handled=0 drops=[]'], 'a range over 256 KB is not copied and is dropped whole by the caller'),
     'hole': (['rw 300000+8000 handled=0 drops=[]'], 'a range with an uncommitted page is not copied and is dropped whole'),
     'neither': (['rx 0+1000 handled=0 drops=[]'], 'a protection that is neither is left alone'),
-    'taint': (['rw 400000+10000 handled=1 drops=[]', 'rx 400000+10000 handled=0 drops=[]'],
+    'taint': (['rw 400000+10000 handled=0 drops=[]', 'rx 400000+10000 handled=0 drops=[]'],
               'an execute miss inside the pending range: dropped whole by the caller'),
     'miss-outside': (['rw 400000+10000 handled=1 drops=[]', 'rx 400000+10000 handled=1 drops=[]'],
                      'an execute miss elsewhere does not taint it'),
     'ring-overflow': (['rw 400000+10000 handled=1 drops=[]', 'rx 400000+10000 handled=0 drops=[]'],
                       'more misses than the ring holds count as a miss inside'),
-    'sub-range': (['rw 500000+10000 handled=1 drops=[]', 'rx 504000+4000 handled=1 drops=[500000+4000,508000+8000,506000+1000]'],
+    'sub-range': (['rw 500000+10000 handled=0 drops=[]', 'rx 504000+4000 handled=1 drops=[500000+4000,508000+8000,506000+1000]'],
                   'RX over part of a copy: the rest of the copy is dropped whole, the part compared'),
-    'overlap': (['rw 600000+10000 handled=1 drops=[]', 'rw 608000+10000 handled=1 drops=[600000+10000]', 'rx 608000+10000 handled=1 drops=[]'],
+    'overlap': (['rw 600000+10000 handled=0 drops=[]', 'rw 608000+10000 handled=0 drops=[600000+10000]', 'rx 608000+10000 handled=1 drops=[]'],
                 'a new RW range over a pending copy drops that copy whole first'),
-    'partial': (['rw 700000+8000 handled=1 drops=[]', 'rx 704000+8000 handled=0 drops=[700000+4000]'],
+    'partial': (['rw 700000+8000 handled=0 drops=[]', 'rx 704000+8000 handled=0 drops=[700000+4000]'],
                 'RX that only partly meets a copy: the copy outside is dropped, the caller drops the range'),
-    'many-runs': (['rw 800000+40000 handled=1 drops=[]', 'rx 800000+40000 handled=0 drops=[]'],
+    'many-runs': (['rw 800000+40000 handled=0 drops=[]', 'rx 800000+40000 handled=0 drops=[]'],
                   'more than 16 runs of changed pages: dropped whole by the caller'),
 }
 
@@ -290,9 +291,9 @@ else:
             for name, (want, what) in CASES.items():
                 check(what, got.get(name) == want, name + ': ' + repr(got.get(name)))
             ev = got.get('evict', [])
-            check('a 33rd pending range evicts the oldest and drops it whole',
-                  len(ev) == 33 and all(l.endswith('handled=1 drops=[]') for l in ev[:32])
-                  and ev[32] == 'rw c00000+4000 handled=1 drops=[a00000+4000]', repr(ev[-2:]))
+            check('a 33rd pending range evicts the oldest and drops it whole (each a first cycle, dropped whole by the caller)',
+                  len(ev) == 33 and all(l.endswith('handled=0 drops=[]') for l in ev[:32])
+                  and ev[32] == 'rw c00000+4000 handled=0 drops=[a00000+4000]', repr(ev[-2:]))
             check('the counters add up for the cases',
                   n['compared'] == 8 and n['tainted'] == 2 and n['manyruns'] == 1 and n['partial'] == 1 and n['overlap'] == 1
                   and n['evicted'] == 1 and n['big'] == 1 and n['unreadable'] == 1 and n['nosnap'] == 1, str(n))
@@ -302,9 +303,10 @@ else:
 
             out, n = run('many', '1')
             lines = [l for l in out.splitlines() if l.startswith('LOG ')]
-            check('300 unchanged cycles: nothing dropped, all 18300 pages kept',
-                  n['compared'] == 300 and n['kept'] == 300 * 61 and n['calls'] == 0
-                  and all('drops=[]' in l and 'handled=1' in l for l in out.splitlines() if l.startswith('R ')), str(n))
+            rs = [l[2:] for l in out.splitlines() if l.startswith('R ')]
+            check('300 unchanged cycles: only the first RW is dropped whole (by the caller), all 18300 pages kept',
+                  n['compared'] == 300 and n['kept'] == 300 * 61 and n['calls'] == 0 and n['firstwhole'] == 1
+                  and rs[0] == 'rw 0+3d000 handled=0 drops=[]' and all('drops=[]' in l and 'handled=1' in l for l in rs[1:]), str(n))
             check('eight compare lines, the first-kept line, one totals line at the 256th',
                   sum('protect-diff-v3 #' in l for l in lines) == 8 and sum('totals (on):' in l for l in lines) == 1
                   and 'toggles=256 copied=256 compared=256 pages=15616 changed=0 (0%) kept=15616 redone=0' in lines[-1], '\n'.join(lines[-2:]))
@@ -348,8 +350,10 @@ else:
                   n['calls'] == 0 and all('handled=0 drops=[]' in l for l in out.splitlines() if l.startswith('R ')), out)
             out, n = run('out', '1')
             rs = [l[2:] for l in out.splitlines() if l.startswith('R ')]
-            check('mode 1 cannot see a change made outside the window (the blind spot this measures); closed copies cause no drops',
-                  rs[3] == 'rx 0+3d000 handled=1 drops=[]' and n['calls'] == 0 and rs[-1] == 'rw 1000+1000 handled=1 drops=[]', repr(rs))
+            check('mode 1 drops at the RW step the page changed outside the window; a range with no closed copy is dropped whole there',
+                  rs[0] == 'rw 0+3d000 handled=0 drops=[]' and rs[2] == 'rw 0+3d000 handled=1 drops=[5000+1000]'
+                  and rs[3] == 'rx 0+3d000 handled=1 drops=[]' and rs[-1] == 'rw 1000+1000 handled=0 drops=[]'
+                  and n['calls'] == 1 and n['firstwhole'] == 2, repr(rs) + ' ' + str(n))
             out, n = run('sub', 'log')
             rs = [l[2:] for l in out.splitlines() if l.startswith('R ')]
             check('measure only: the helper drops nothing itself in the same sequence',

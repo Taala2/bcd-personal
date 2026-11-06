@@ -25,22 +25,24 @@ Any other executable protection is handled as before (the whole range), and pend
 only partly meets are dropped whole. FEX's own write traps, frees and section unmaps are
 untouched: they still invalidate whatever they did.
 
-v2 (default on, CI 41999889967) hung V.0.7 on its loading screen; the same build with
-log loaded (FINDINGS.md 5e). Why is not known, so v3 measures only by default:
-env.MADEIRA_FEX_PROTECT_DIFF unset or log = measure only (FEX drops whole ranges on both steps,
-as upstream); 1 = on: as v2, and since v2 still hung (with the call-ret stack kept too) also
-the RW step drops what changed since the last RX step, and a range with no closed copy to
-compare is dropped whole on the RW step as upstream, so every byte change between two RX steps
-is dropped (if this still hangs, the cause is not a byte change); rxwhole = a diagnostic half-way: the RW step keeps the range as
-in 1, the RX step drops the whole range as upstream (only the RW-step drop is skipped);
+v2 (default on, CI 41999889967) hung V.0.7 on its loading screen: it missed byte changes the
+RW/RX diff cannot see (before a range's first copy, and outside the window). v3 measured only by
+default while that was found; mode 1 then also drops at the RW step what changed since the last
+RX step, and drops a range with no closed copy to compare whole there, as upstream, so every byte
+change between two RX steps is dropped. That loaded V.0.7, Internship[demo] and Succum (2026-11-06,
+FINDINGS.md 5e), so v4 makes it the default.
+env.MADEIRA_FEX_PROTECT_DIFF: unset, 1 or anything else = on (the default); log = measure only (FEX
+drops whole ranges on both steps, as upstream: the per-game way back); rxwhole = a diagnostic
+half-way: the RW step keeps the range as in 1, the RX step drops the whole range as upstream;
 0 = off, nothing copied or logged.
 
-Outside the window (every mode but 0, log only): after an RX step the copy is refreshed and kept
-as a closed copy; at the next RW step of exactly that range the bytes are compared with it, which
-counts changes made while the range was executable (not seen by the RW/RX diff; one candidate for
-the v2 hang). A closed copy never defers or causes a drop; it gives way to pending copies.
+Outside the window (every mode but 0): after an RX step the copy is refreshed and kept as a
+closed copy; at the next RW step of exactly that range the bytes are compared with it, which
+counts changes made while the range was executable (not seen by the RW/RX diff). Mode 1 drops
+those pages there; in log and rxwhole it is counted only. A closed copy never defers a drop; it
+gives way to pending copies.
 
-Log lines: [protect-diff] protect-diff-v3 ... (the mode once per process, first eight
+Log lines: [protect-diff] protect-diff-v4 ... (the mode once per process, first eight
 compares, the first eight RW steps that found changes outside the window, totals every 256th,
 one line when the first page is kept).
 
@@ -49,9 +51,9 @@ Applied by tools/build-xtajit64.sh for whichever pin; the pinned submodule is ne
 from pathlib import Path
 import sys
 
-MARKER = "protect-diff-v3 madeira-bcd"
-SUMMARY = ("FEX: a code range's W^X cycle is measured, whole ranges still dropped "
-           "([protect-diff]; env.MADEIRA_FEX_PROTECT_DIFF=1 drops only the changed pages, rxwhole skips only the RW-step drop, 0 = off)")
+MARKER = "protect-diff-v4 madeira-bcd"
+SUMMARY = ("FEX: a code range's W^X cycle drops only the bytes that changed between two RX steps "
+           "([protect-diff]; env.MADEIRA_FEX_PROTECT_DIFF=log drops whole ranges as upstream, 0 = off)")
 
 REL = "Source/Windows/Common/InvalidationTracker.cpp"
 
@@ -65,8 +67,8 @@ HELPER = (
     "/* " + MARKER + " (tools/patch-fex-ios-protect-diff.py). A code range made non-executable is copied\n"
     " * and keeps its translations; the next executable protection over it drops only the pages whose\n"
     " * bytes changed. Anything this cannot vouch for is dropped whole, as before. Static memory only:\n"
-    " * nothing is allocated inside a memory notification. env.MADEIRA_FEX_PROTECT_DIFF: unset or log =\n"
-    " * measure only (the default: 1 hung V.0.7), 1 = on, rxwhole = keep on RW, drop whole on RX, 0 = off. */\n"
+    " * nothing is allocated inside a memory notification. env.MADEIRA_FEX_PROTECT_DIFF: unset or 1 = on\n"
+    " * (the default), log = measure only, rxwhole = keep on RW, drop whole on RX, 0 = off. */\n"
     "#ifdef FEX_IOS_HOST\n"
     "namespace {\n"
     "constexpr int IosPdSlots = 32;\n"
@@ -127,20 +129,20 @@ HELPER = (
     "  return false;\n"
     "}\n"
     "\n"
-    "// 0 off, 1 on, 2 measure only (unset, log or anything else), 3 rxwhole.\n"
+    "// 0 off, 1 on (unset, 1 or anything else), 2 measure only (log), 3 rxwhole.\n"
     "int IosPdMode() {\n"
     "  static const int Mode = [] {\n"
     "    const char* Opt = getenv(\"MADEIRA_FEX_PROTECT_DIFF\");\n"
     "    if (Opt && Opt[0] == '0') {\n"
     "      return 0;\n"
     "    }\n"
-    "    if (Opt && Opt[0] == '1') {\n"
-    "      return 1;\n"
+    "    if (Opt && Opt[0] == 'l') {\n"
+    "      return 2;\n"
     "    }\n"
     "    if (Opt && Opt[0] == 'r') {\n"
     "      return 3;\n"
     "    }\n"
-    "    return 2;\n"
+    "    return 1;\n"
     "  }();\n"
     "  return Mode;\n"
     "}\n"
@@ -199,8 +201,8 @@ HELPER = (
     "    return false;\n"
     "  }\n"
     "  if (!IosPdModeSaid.test_and_set(std::memory_order_relaxed)) {\n"
-    "    LogMan::Msg::EFmt(\"[protect-diff] protect-diff-v3 mode: {} (env.MADEIRA_FEX_PROTECT_DIFF: unset or log = measure only, \"\n"
-    "                      \"1 = drop only the changed pages, rxwhole = skip only the RW-step drop, 0 = off)\",\n"
+    "    LogMan::Msg::EFmt(\"[protect-diff] protect-diff-v4 mode: {} (env.MADEIRA_FEX_PROTECT_DIFF: unset or 1 = drop only the changed \"\n"
+    "                      \"pages, log = measure only (whole ranges, as upstream), rxwhole = skip only the RW-step drop, 0 = off)\",\n"
     "                      IosPdModeName(Mode));\n"
     "  }\n"
     "  // KeepRw: the RW step defers its drop (1 and rxwhole). PerPage: the RX step drops only the changed pages (1).\n"
@@ -333,7 +335,7 @@ HELPER = (
     "      }\n"
     "    }\n"
     "    if (SayOut) {\n"
-    "      LogMan::Msg::EFmt(\"[protect-diff] protect-diff-v3 outside #{} {:#x}-{:#x}: {} of {} pages changed since the last RX step \"\n"
+    "      LogMan::Msg::EFmt(\"[protect-diff] protect-diff-v4 outside #{} {:#x}-{:#x}: {} of {} pages changed since the last RX step \"\n"
     "                        \"(outside the W^X window); first at {:#x}: {:#x} -> {:#x}\",\n"
     "                        OutN, Base, End, OutChanged, OutPages, OutFirst, OutOld, OutNew);\n"
     "    }\n"
@@ -444,16 +446,16 @@ HELPER = (
     "    }\n"
     "  }\n"
     "  if (SayKept) {\n"
-    "    LogMan::Msg::EFmt(\"[protect-diff] protect-diff-v3: the first unchanged page of a W^X cycle kept its translations \"\n"
+    "    LogMan::Msg::EFmt(\"[protect-diff] protect-diff-v4: the first unchanged page of a W^X cycle kept its translations \"\n"
     "                      \"({:#x}-{:#x}: {} of {} pages changed; env.MADEIRA_FEX_PROTECT_DIFF=log drops whole ranges)\",\n"
     "                      SayBase, SayEnd, SayChanged, SayPages);\n"
     "  }\n"
     "  if (Say && SayN <= 8) {\n"
-    "    LogMan::Msg::EFmt(\"[protect-diff] protect-diff-v3 #{} {:#x}-{:#x} pages={} changed={}\", SayN, SayBase, SayEnd, SayPages,\n"
+    "    LogMan::Msg::EFmt(\"[protect-diff] protect-diff-v4 #{} {:#x}-{:#x} pages={} changed={}\", SayN, SayBase, SayEnd, SayPages,\n"
     "                      SayChanged);\n"
     "  }\n"
     "  if (Say && !(SayN & 255)) {\n"
-    "    LogMan::Msg::EFmt(\"[protect-diff] protect-diff-v3 totals ({}): toggles={} copied={} compared={} pages={} changed={} ({}%) \"\n"
+    "    LogMan::Msg::EFmt(\"[protect-diff] protect-diff-v4 totals ({}): toggles={} copied={} compared={} pages={} changed={} ({}%) \"\n"
     "                      \"kept={} redone={} whole: tainted={} many-runs={} partial={} overlap={} evicted={} \"\n"
     "                      \"exec-without-copy={} skipped: over-256KB={} unreadable={} unreadable-at-compare={} busy={} \"\n"
     "                      \"outside the window: checked={} pages={} changed={} cycles-with-changes={} discarded={} \"\n"

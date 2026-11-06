@@ -17,10 +17,10 @@ step drops the changed pages only; anything it cannot vouch for is dropped whole
     released;
   - the helper, cut out of the patched file and compiled on the host with stubs, against a
     fake memory map: what it drops, what it keeps and what it leaves to the caller, case by
-    case (CASES below, in mode 1), and the modes of env.MADEIRA_FEX_PROTECT_DIFF: unset and log
-    measure only (the default since v2 hung V.0.7), rxwhole keeps on RW and leaves RX to the
-    caller, 0 does nothing; the log-only count of bytes changed outside the W^X window (between
-    an RX step and the next RW step), which mode 1 cannot see;
+    case (CASES below, in mode 1), and the modes of env.MADEIRA_FEX_PROTECT_DIFF: unset, 1 or
+    anything else on (the default since v4), log measure only, rxwhole keeps on RW and leaves RX
+    to the caller, 0 does nothing; bytes changed outside the W^X window (between an RX step and
+    the next RW step), counted in every mode and dropped at the RW step in mode 1;
   - tools/build-xtajit64.sh runs it once with a warning fallback and restores the file; the
     log-only overlay is gone from it; CI runs this check.
 No device is run.
@@ -280,7 +280,7 @@ else:
                 return out, counts
 
             out, n = run('cases', '1')
-            check('mode 1 says so once', out.count('protect-diff-v3 mode: on (') == 1, out[:400])
+            check('mode 1 says so once', out.count('protect-diff-v4 mode: on (') == 1, out[:400])
             got, case = {}, None
             for line in out.splitlines():
                 if line.startswith('C '):
@@ -308,28 +308,37 @@ else:
                   n['compared'] == 300 and n['kept'] == 300 * 61 and n['calls'] == 0 and n['firstwhole'] == 1
                   and rs[0] == 'rw 0+3d000 handled=0 drops=[]' and all('drops=[]' in l and 'handled=1' in l for l in rs[1:]), str(n))
             check('eight compare lines, the first-kept line, one totals line at the 256th',
-                  sum('protect-diff-v3 #' in l for l in lines) == 8 and sum('totals (on):' in l for l in lines) == 1
+                  sum('protect-diff-v4 #' in l for l in lines) == 8 and sum('totals (on):' in l for l in lines) == 1
                   and 'toggles=256 copied=256 compared=256 pages=15616 changed=0 (0%) kept=15616 redone=0' in lines[-1], '\n'.join(lines[-2:]))
 
-            for value, what in (('log', 'MADEIRA_FEX_PROTECT_DIFF=log'), (None, 'MADEIRA_FEX_PROTECT_DIFF unset (the default)'),
+            out, n = run('short', 'log')
+            rs = [l for l in out.splitlines() if l.startswith('R ')]
+            check('MADEIRA_FEX_PROTECT_DIFF=log: measured only, never handled, nothing dropped by the helper',
+                  n['compared'] == 1 and n['changed'] == 1 and n['kept'] == 0 and n['calls'] == 0
+                  and len(rs) == 2 and all('handled=0 drops=[]' in l for l in rs)
+                  and out.count('protect-diff-v4 mode: measure only (') == 1, out)
+            for value, what in ((None, 'MADEIRA_FEX_PROTECT_DIFF unset (the default)'), ('1', 'MADEIRA_FEX_PROTECT_DIFF=1'),
                                 ('yes', 'an unknown MADEIRA_FEX_PROTECT_DIFF value')):
                 out, n = run('short', value)
-                rs = [l for l in out.splitlines() if l.startswith('R ')]
-                check(what + ': measured only, never handled, nothing dropped by the helper',
-                      n['compared'] == 1 and n['changed'] == 1 and n['kept'] == 0 and n['calls'] == 0
-                      and len(rs) == 2 and all('handled=0 drops=[]' in l for l in rs)
-                      and out.count('protect-diff-v3 mode: measure only (') == 1, out)
-            out, n = run('many')
-            check('300 cycles by default: totals say measure only, nothing kept',
+                rs = [l[2:] for l in out.splitlines() if l.startswith('R ')]
+                check(what + ': on, the first RW dropped whole by the caller, the RX step only the changed page',
+                      rs == ['rw 0+3d000 handled=0 drops=[]', 'rx 0+3d000 handled=1 drops=[2000+1000]']
+                      and n['kept'] == 60 and n['redone'] == 1 and n['calls'] == 1
+                      and out.count('protect-diff-v4 mode: on (') == 1, out)
+            out, n = run('many', 'log')
+            check('300 cycles with log: totals say measure only, nothing kept',
                   sum('totals (measure only):' in l for l in out.splitlines()) == 1 and n['kept'] == 0 and n['calls'] == 0
                   and 'first unchanged page' not in out, str(n))
+            out, n = run('many')
+            check('300 cycles by default: totals say on, all pages kept',
+                  sum('totals (on):' in l for l in out.splitlines()) == 1 and n['kept'] == 300 * 61, str(n))
 
             out, n = run('short', 'rxwhole')
             rs = [l[2:] for l in out.splitlines() if l.startswith('R ')]
             check('rxwhole: RW keeps the range, RX leaves the whole range to the caller, nothing kept per page',
                   rs == ['rw 0+3d000 handled=1 drops=[]', 'rx 0+3d000 handled=0 drops=[]']
                   and n['compared'] == 1 and n['changed'] == 1 and n['kept'] == 0 and n['calls'] == 0
-                  and out.count('protect-diff-v3 mode: rxwhole (') == 1 and 'first unchanged page' not in out, out)
+                  and out.count('protect-diff-v4 mode: rxwhole (') == 1 and 'first unchanged page' not in out, out)
             out, n = run('sub', 'rxwhole')
             rs = [l[2:] for l in out.splitlines() if l.startswith('R ')]
             check('rxwhole: what of a copy lies outside the RX range, and a copy a new RW range overlaps, are dropped here',

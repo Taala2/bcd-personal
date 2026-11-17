@@ -62,18 +62,48 @@ require(("jit_check_debugged()" in ready or "SigningStatus.current.debugged" in 
         and "isDebuggerTraced()" in ready and "isDebuggerAttached()" not in ready,
         "readiness requires CS_DEBUGGED and a live debugger")
 
-# Automatic selection is deterministic: installed StikDebug first, otherwise
-# the built-in helper. A failure never silently falls through to another method.
+# Automatic selection is deterministic. Round 660 (M138, owner 2026-11-15): BCD's own helper when this device is paired with BCD and the
+# helper runs here (iOS 26, LiveContainer's helper support), even with StikDebug installed; otherwise installed StikDebug, otherwise the
+# helper. env.MADEIRA_JIT_AUTO_BUILTIN = 0 restores the order before.
 resolved = function(setup, "var resolvedMethod: JITMethod")
-require("StikJITHelper.isAvailable ? .stikDebug : .builtIn" in resolved,
-        "Automatic prefers installed StikDebug, then Built-in StikJIT")
+takes = function(setup, "var automaticTakesBuiltIn: Bool")
+require("guard method == .automatic else { return method }" in resolved
+        and "guard StikJITHelper.isAvailable else { return .builtIn }" in resolved
+        and "return automaticTakesBuiltIn ? .builtIn : .stikDebug" in resolved,
+        "Automatic: no StikDebug -> built-in; StikDebug installed -> built-in only when automaticTakesBuiltIn")
+require("Self.automaticPrefersBuiltIn && pairingImported && MadeiraBuiltInJIT.isAvailable" in takes
+        and 'MadeiraConfig.flag("MADEIRA_JIT_AUTO_BUILTIN")' in setup,
+        "the helper is taken over StikDebug only with a pairing, where it runs, and with the key not 0")
 coordinator_enable = function(setup, "func enable(completion:")
 coordinator_route = function(setup, "private func enableResolved(")
 require("ensureLoopback" in coordinator_enable and "self?.enableResolved" in coordinator_enable
         and "switch resolvedMethod" in coordinator_route
-        and "enableBuiltIn(completion: completion)" in coordinator_route
+        and "enableBuiltIn { [weak self] result in" in coordinator_route
+        and "enableStikDebug(completion: completion)" in coordinator_route
         and setup.count("StikJITHelper.enableJIT") == 1,
         "the coordinator routes each selected JIT method once, after the loopback check")
+# A failure falls through to StikDebug only when Automatic took the helper over an installed StikDebug and the device refused (or lost)
+# BCD's pairing; a connection problem never does (StikDebug goes through the same LocalDevVPN), and a chosen method never does.
+refused = function(setup, "private func pairingRefused(")
+require("let stikDebugBehind = method == .automatic && StikJITHelper.isAvailable" in coordinator_route
+        and "guard let self, stikDebugBehind, case .failure(let failure) = result, pairingRefused(failure) else {" in coordinator_route
+        and "if stikDebugBehind { fallBackToStikDebug(" in coordinator_route
+        and "case CoordinatorError.pairingMissing = failure" in refused
+        and "return connectionProblem == .pairing" in refused
+        and ".vpn" not in refused,
+        "the only fall-back: Automatic over StikDebug, pairing refused or gone, never a connection problem")
+fallback = function(setup, "private func fallBackToStikDebug(")
+require('LogStore.shared.log("[jit] Automatic: the built-in helper could not use this device' in fallback
+        and "enableStikDebug(completion: completion)" in fallback,
+        "the fall-back is logged and goes through StikDebug's own path")
+# The pool requests' method is the one that attached, else the order before round 660 (an attach BCD did not make, such as StikDebug
+# starting BCD with JIT on, is StikDebug's whenever it is installed).
+reqm = function(setup, "var requestMethod: JITMethod")
+require("if let attachedMethod { return attachedMethod }" in reqm
+        and "return StikJITHelper.isAvailable ? .stikDebug : .builtIn" in reqm
+        and "self?.attachedMethod = .stikDebug" in setup and "self?.attachedMethod = .builtIn" in setup
+        and "StikJITHelper.noteRequestMethod(jitCoordinator.requestMethod)" in content,
+        "the pool request is labelled with the method that attached")
 # ContentView's on-demand JIT setup is BCD's (BCDJITSetupSheet, 2026-10-18).
 # Wave 3 (2026-10-19): the classic JITSettingsSection and JITSetupView are deleted; Settings › JIT is BCD's section.
 require("BCDJITSetupSheet(enableJIT: { enableJIT() })" in content
@@ -110,8 +140,8 @@ require("targetPID: targetPID" in helper_enable
         and "script: .customBase64(scriptBase64)" in helper_enable
         and "forceScript: true" in helper_enable,
         "the helper attaches to Madeira and forces its custom script")
-require('getenv("LC_HOME_PATH")' in host,
-        "built-in JIT is disabled under LiveContainer")
+require('getenv("LC_HOME_PATH")' in host and 'LiveContainerHelper.state != .ready' in host,
+        "built-in JIT under LiveContainer only through its proven Helper Process Support")
 
 # Packaging: both targets share Codable messages; only the helper links the
 # device-only StikJIT framework; the script and helper are embedded in the app.
@@ -193,5 +223,60 @@ require("guard jitReadyForLaunch(entry: entry.id, then: { startLibraryEntry(entr
         and play.index("cloudClear(") < play.index("jitReadyForLaunch(")
         and "then: { startDock(game, compactPool: compactPool, profile: profile) }) else { return }" in content,
         "Play and Dock starts continue after JIT without repeating the checks already passed")
+
+# LiveContainer's Helper Process Support (follow-up of the night round 2026-11-11, owner: "nothing may change for those who do not
+# use that LiveContainer or do not turn the switch on; verify it"). Outside LiveContainer nothing new runs; inside it, without the
+# switch on, nothing new is called (only LiveContainer's own LCAppInfo.plist is read) and every outcome is the old one.
+look = function(host, "private static func look() -> BCDLCHelper")
+body = look[look.index("{") + 1:].lstrip()
+require(body.startswith('guard getenv("LC_HOME_PATH") != nil else { return .notAvailable }'),
+        "LiveContainer helper: outside LiveContainer the look returns at once (no call, no log line)")
+require("if !multitask, switchOn == true, let url = helperURL" in look and look.count("factory.extension(withIdentifier:") == 1
+        and look.index("if !multitask, switchOn == true") < look.index("factory.extension(withIdentifier:"),
+        "LiveContainer helper: the extension probe runs only with Helper Process Support switched on")
+require('else if probe == "LCGuestExtension" && prepared { state = .ready }' in look and look.count("state = .ready") == 1,
+        "LiveContainer helper: ready only with LiveContainer's own extension object and its install-time preparation")
+reason_body = function(host, "static var unavailableReason: String?")
+require('if getenv("LC_HOME_PATH") != nil, LiveContainerHelper.state != .ready {' in reason_body,
+        "built-in JIT: the LiveContainer gate opens only for a proven ready helper")
+pool = (app / "MemoryPool.m").read_text()
+ident = function(pool, "NSString *MadeiraMemoryHostIdentifier(void)")
+require('NSString *fallback = [NSBundle.mainBundle.bundleIdentifier stringByAppendingString:@".MemoryHost"];\n    if (!getenv("LC_HOME_PATH")) return fallback;' in ident
+        and "NSString *identifier = MadeiraMemoryHostIdentifier();" in pool,
+        "helper memory: outside LiveContainer the extension's id is the one it always was")
+bridge = (app / "WineProcessBridge.m").read_text()
+require('if (poolMB >= 512 && getenv("LC_HOME_PATH") && !madeira_cfg_bool("env.MADEIRA_LC_HELPER_MEMORY", 0)) {' in bridge
+        and '} else if (poolMB >= 512) {\n                            if (getenv("LC_HOME_PATH"))' in bridge,
+        "helper memory: inside LiveContainer only with env.MADEIRA_LC_HELPER_MEMORY = 1; outside it the old path, untouched")
+catalog = (app / "ConfigCatalog.generated.swift").read_text()
+require('ConfigOption(key: "env.MADEIRA_LC_HELPER_MEMORY", title: "Helper memory inside LiveContainer", kind: .bool, defaultValue: "0"' in catalog,
+        "helper memory inside LiveContainer: the key is in the catalog, off by default")
+# Owner, 2026-11-11: "Built-in's behaviour will never change either." The built-in helper's own path (its request, the helper
+# extension, the pairing, the network, the script, the JIT coordinator) knows nothing of LiveContainer's helper state; only the
+# LiveContainer gate and one LiveContainer-only log word read it.
+for name in ("JITSetup.swift", "StikJITHelper.swift", "JITPairing.swift", "JITNetwork.swift"):
+    require("LiveContainerHelper" not in (app / name).read_text() and "BCDLCHelper" not in (app / name).read_text(),
+            "built-in JIT unchanged: %s does not read LiveContainer's helper state" % name)
+helper_src = "".join(f.read_text() for f in (root / "app/MadeiraJITHelper").rglob("*.swift"))
+require("LiveContainerHelper" not in helper_src and "LC_HOME_PATH" not in helper_src,
+        "built-in JIT unchanged: the helper extension itself is untouched")
+send_body = function(host, "static func send(_ request: MadeiraJITRequest,")
+require("LiveContainerHelper" not in send_body and "lcHelper" not in send_body,
+        "built-in JIT unchanged: the request is sent exactly as before")
+require(host.count("LiveContainerHelper.state") == 2 and 'let host = getenv("LC_HOME_PATH") != nil ? " host-pid=\\(getpid())" : ""' in host,
+        "built-in JIT unchanged outside LiveContainer: the helper state is read only by the LiveContainer gate, and the log line gains a word only there")
+require("LiveContainerHelper" not in (app / "BCDSetupView.swift").read_text(),
+        "first-run setup is unchanged (its Built-in choices inside LiveContainer behave as before)")
+
+# Build 655 (owner, 2026-11-11; a tester's idea): Home's "JIT off" chip runs Enable JIT, the same action as Settings › JIT's button
+# (BCDSettingsLive: BCDLiveStore.shared.enableJIT(); the Home store's actions are BCDLiveStore). "JIT on" and "JIT…" stay labels.
+front = (app / "BCDFrontEnd.swift").read_text()
+require(front.count("if system.jit == .off {\n                    Button { store.actions?.enableJIT() } label: { chip }") == 1
+        and front.count("if store.system.jit == .off {\n            Button { store.actions?.enableJIT() } label: { label }") == 1
+        and front.count("store.actions?.enableJIT()") == 2,
+        "Home: the JIT off chip (classic and native interface) runs Enable JIT; nothing else on Home starts it")
+require("func enableJIT() { settled { [weak self] in self?.requestJIT?() } }" in (app / "BCDLiveStore.swift").read_text()
+        and "BCDJITLiveSection(enableJIT: { BCDLiveStore.shared.enableJIT() }" in (app / "BCDSettingsLive.swift").read_text(),
+        "Home's chip and Settings › JIT's Enable JIT are one action")
 
 print("check-jit-method: PASS")

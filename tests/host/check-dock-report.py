@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Copyright 2026 125hz
 # Madeira Converter Exception: see LICENSE-EXCEPTION.md
+# Portions copyright 2026 Vugar: code taken from https://github.com/willfaust/Madeira (pull request #572, branch steam-friends-pr-572-replacement)
+# under GPL-3.0-or-later and modified for BCD in November 2026. See THIRD-PARTY-NOTICES.md.
 """Compile Madeira Dock's production report parser; synthetic reports only.
 
 The host (madeira-dock) writes numeric stages to C:\\madeira-dock.txt.
@@ -26,6 +28,10 @@ assert(missingOption.fields["launch-option-index"] == "7" && missingOption.failu
 assert(parse("[steam-host] ml1830 launch-option-invalid=1\n[steam-host] ml1830 probe-result=45\n").failure!.contains("launch option"))
 assert(parse("[steam-host] ml1830 probe-result=30\n").failure!.contains("set up the Steam session"))
 assert(parse("[steam-host] ml1830 probe-result=35\n").failure!.contains("license"))
+// Night round 2026-11-11 (G8 S5, G5 S5): Valve's launch refusals 33 (R.E.P.O. A272J4) and 45 (GeoGuessr PX27QG) in words; the host's result 45 or 48 carries them
+assert(parse("[steam-host] ml1970 launch-client-error=33\n[steam-host] ml1830 probe-result=45\n").failure!.contains("Family Sharing"))
+assert(parse("[steam-host] ml1970 launch-client-error=45\n[steam-host] ml1830 probe-result=45\n").failure!.contains("launch option"))
+assert(MadeiraDock.Report.launchRefusal(33, waited: false)!.contains("reason 33") && MadeiraDock.Report.launchRefusal(45, waited: false)!.contains("code 45"))
 assert(parse("[steam-host] ml1830 probe-result=0\n").failure == nil)
 assert(parse("[steam-host] ml1830 probe-result=30").result == nil)
 assert(parse("[steam-host] ml1830 probe-result=30\n[steam-host] ml1830 probe-result=0\n").result == 0)
@@ -82,9 +88,19 @@ assert(parse("[steam-host] ml2016 session-offline-logon-state=3\n[steam-host] ml
 assert(parse("[steam-host] ml2016 session-offline-ready=1\n").fields["session-offline-ready"] == "1")
 let rejected = "[steam-host] ml1830 account=synthetic\n[steam-host] ml1830 token=synthetic\n[steam-host] ml1830 probe-result=2147483648\n[steam-host] ml1830 probe-result=secret\n[steam-host] ml1830 client-sha256=invalid\n[steam-host] unknown probe-result=0\n[steam-host] ml1830 probe-result=0 secret\n"
 assert(parse(rejected).fields.isEmpty)
-assert(parse(String(repeating: "x", count: 32769)).fields.isEmpty)
+// The cap (1 MiB): a report of exactly reportCap bytes is read, one byte more is not.
+let capLine = "[steam-host] ml1830 probe-result=0\n"
+let capPad = String(repeating: "x", count: MadeiraDock.reportCap - capLine.utf8.count - 1) + "\n"
+assert(MadeiraDock.reportCap == 1 << 20 && (capPad + capLine).utf8.count == MadeiraDock.reportCap)
+assert(parse(capPad + capLine).result == 0)
+assert(parse("x" + capPad + capLine).fields.isEmpty)
+// Steam Friends (madeira-dock #10): its numeric lines are read; a session with Friends off writes friends-available=0 and nothing else.
+let friendsOff = parse("[steam-host] ml1830 launch-request-submitted=1\n[steam-host] ml1830 friends-available=0\n[steam-host] ml1830 probe-result=0\n")
+assert(friendsOff.fields["friends-available"] == "0" && friendsOff.result == 0 && friendsOff.failure == nil)
+assert(parse("[steam-host] ml1830 friends-cmd-seq=7\n[steam-host] ml1830 friends-cmd-result=1\n").fields["friends-cmd-result"] == "1")
+assert(parse("[steam-host] ml1830 friends-name=secret\n[steam-host] ml1830 friends-count=name\n").fields.isEmpty)
 assert(MadeiraDock.parseReport(Data([0xff])).fields.isEmpty)
-print("PASS: Dock report completion, CRLF, fingerprints, adapter version, callback IDs, failure reasons (including the session wait and the license wait) and private/malformed field rejection")
+print("PASS: Dock report completion, the 1 MiB cap, the Friends lines, CRLF, fingerprints, adapter version, callback IDs, failure reasons (including the session wait and the license wait) and private/malformed field rejection")
 '''
 with tempfile.TemporaryDirectory(prefix='madeira-dock-report-') as directory:
     source = Path(directory) / 'main.swift'; binary = Path(directory) / 'check'

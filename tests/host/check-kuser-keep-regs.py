@@ -79,9 +79,19 @@ int main(void)
 
 import json
 recs = json.loads((R / "recommended/recommendations.json").read_text())["rules"]
-check("only The Adventures of Elliot's list (build 603, its Denuvo TLS fault) sets it; no other list and no auto-tune rule does",
-      [r["id"] for r in recs if "MADEIRA_KUSER_KEEP_REGS" in json.dumps(r["config"])] == ["the-adventures-of-elliot"]
-      and "MADEIRA_KUSER_KEEP_REGS" not in (R / "build/tools/autotune_rules.py").read_text())
+# Night round 2026-11-11 (agents G5 S1, G11 S4, G7 S3/S17/S20): the protected-code family's lists carry it as an experiment (from build 602 for the
+# games that did not start, 652 for Football Manager's), and two auto-tune rules offer it after the crash those games show (a wild pointer off by the
+# real shared page's displacement); no other list and no other rule does.
+rules_text = (R / "build/tools/autotune_rules.py").read_text()
+check("only The Adventures of Elliot's list (build 603, its Denuvo TLS fault) and the protected-code family's (Football Manager 27 and the installed copies, Yakuza Kiwami 3, "
+      "Metaphor, Prince of Persia: The Lost Crown, PRAGMATA) set it; the two rules kuser-register-rebase-protected-unity and kuser-rebase-protected-program offer it",
+      sorted(r["id"] for r in recs if "MADEIRA_KUSER_KEEP_REGS" in json.dumps(r["config"])) == sorted([
+          "the-adventures-of-elliot", "football-manager-27", "football-manager-other", "yakuza-kiwami-3-dark-ties", "metaphor-refantazio",
+          "prince-of-persia-the-lost-crown", "pragmata",
+          # round 660 (M020, M065): Planet Zoo 2, Planet Coaster 2, ONIMUSHA, RE Requiem v4 and FINAL FANTASY RESONANCE (the full game and the demo's v4)
+          "planet-zoo-2", "planet-coaster-2", "onimusha-way-of-the-sword", "resident-evil-requiem", "final-fantasy-resonance", "final-fantasy-resonance-demo"])
+      and rules_text.count("MADEIRA_KUSER_KEEP_REGS = 1\"]") == 3 and "kuser-register-rebase-protected-unity" in rules_text and "kuser-rebase-protected-program" in rules_text
+      and "kuser-rebase-protected-nocopy" in rules_text)   # round 660 (M020): the third rule, for the protector that reads KUSER once
 
 print("PASS: KUSER keep regs" if ok else "FAIL: KUSER keep regs")
 sys.exit(0 if ok else 1)

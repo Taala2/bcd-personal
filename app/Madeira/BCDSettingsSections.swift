@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright 2026 thebcd69 (BCD)
 // BCD Material: additional terms under GPL-3.0 section 7 apply; see LICENSE-BCD.md.
+// Portions copyright 2026 Russell Barton: code taken from https://github.com/thebcd69/bcd-games (pull request #46 by rbarton124)
+// under GPL-3.0-or-later with the Madeira Converter Exception and modified for BCD in November 2026. See THIRD-PARTY-NOTICES.md.
+// Portions copyright 2026 Paulo Eduardo Correa (pauloec): the native iPhone Duo interface (Liquid Glass, system tabs, controller navigation, Windows desktop on Home), from thebcd69/bcd-games pull request #43; GPL-3.0-only, modified for BCD in November 2026. See THIRD-PARTY-NOTICES.md.
 
 import SwiftUI
 import UIKit
@@ -56,6 +59,18 @@ struct BCDMemoryStatus: Hashable {
     func set(_ key: BCDMemoryKey, _ value: String)
     var eco: Bool { get }
     func setEco(_ on: Bool)
+    /// bcd.cfg's sched-hints (BCDSchedHints.swift): "" off, "watch" log only, "1" on. It is read when a game starts.
+    var schedHints: String { get }
+    func setSchedHints(_ value: String)
+    /// In the background (BackgroundRun.swift): minutes a running game, and a download, keep going after BCD leaves the screen. "" is off, the
+    /// default: iOS pauses them within seconds, as it always did. The effect starts the next time BCD is left, so it never asks for a restart.
+    var backgroundGame: String { get }
+    func setBackgroundGame(_ minutes: String)
+    var backgroundDownload: String { get }
+    func setBackgroundDownload(_ minutes: String)
+    /// Whether the game's sound plays meanwhile (muted unless this is on).
+    var backgroundSound: Bool { get }
+    func setBackgroundSound(_ on: Bool)
     /// A switch changed this run: it applies from BCD's next start.
     var restartNeeded: Bool { get }
     var extensionTestAvailable: Bool { get }
@@ -63,6 +78,30 @@ struct BCDMemoryStatus: Hashable {
     var extensionTestLine: String? { get }
     func runExtensionTest()
     func refresh()
+}
+
+extension BCDMemoryBackend {
+    var schedHints: String { "" }
+    func setSchedHints(_ value: String) {}
+}
+
+/// The minutes Memory & performance's In the background rows offer ("" is off, the engine's own default). Outside the generic view: Swift
+/// keeps no stored statics in a generic type.
+enum BCDBackgroundRows {
+    static let gameSteps = ["5", "10", "20", "30"]
+    static let downloadSteps = ["30", "60", "120"]
+
+    static func choices(current: String, steps: [String]) -> [BCDSettingsChoice] {
+        var list = [BCDSettingsChoice(value: "", label: "Off")] + steps.map { BCDSettingsChoice(value: $0, label: label($0)) }
+        if !current.isEmpty, !steps.contains(current) { list.append(BCDSettingsChoice(value: current, label: label(current))) }   // a value set by hand stays reachable
+        return list
+    }
+
+    static func label(_ minutes: String) -> String {
+        guard let m = Int(minutes) else { return minutes }
+        if m >= 60, m % 60 == 0 { return m == 60 ? "1 hour" : "\(m / 60) hours" }
+        return "\(m) min"
+    }
 }
 
 struct BCDMemorySettings<Backend: BCDMemoryBackend>: View {
@@ -107,7 +146,7 @@ struct BCDMemorySettings<Backend: BCDMemoryBackend>: View {
                         "Which of a game's allocations may move into helper memory or the swap file. The wider, the more memory it saves and the more it can slow a game.",
                         enabled: backend.value(.swap) != "" || backend.value(.memoryPool) != "")
                     row(.memoryPool, "Helper memory",
-                        "Memory from BCD's helper extension, outside BCD's own limit, used first while the device has some to spare. Works without the swap file. On a device with 8 GB or less, keep it to a quarter of its memory. Not available when BCD runs inside LiveContainer. Experimental.")
+                        "Memory from BCD's helper extension, outside BCD's own limit, used first while the device has some to spare. Works without the swap file. On a device with 8 GB or less, keep it to a quarter of its memory. Inside LiveContainer only with its Helper Process Support and the setting \"Helper memory inside LiveContainer\" on. Experimental.")
                 }
                 BCDSettingsGroup(title: "Speed and power") {
                     row(.syncEngine, "Thread sync",
@@ -115,8 +154,26 @@ struct BCDMemorySettings<Backend: BCDMemoryBackend>: View {
                     BCDSettingsToggleRow(id: BCDSettingsID.control(.memory, "eco"), title: "Eco mode",
                                          note: "Every game starts with its threads at low priority: cooler and longer on battery, but slower. Handy for loading screens.",
                                          isOn: backend.eco) { backend.setEco($0) }
+                    // madeira-bcd (Porthole port, item 5): scheduler hints for a running game, an experiment; off unless chosen.
+                    BCDSettingsValueRow(id: BCDSettingsID.control(.memory, "sched-hints"), title: BCDSchedHints.title, note: BCDSchedHints.note,
+                                        choices: BCDSchedHints.choices.map { BCDSettingsChoice(value: $0.0, label: $0.1) },
+                                        value: backend.schedHints) { backend.setSchedHints($0) }
                 }
                 if backend.restartNeeded { BCDSettingsNotice(text: bcdSettingsRestartNote) }
+            }
+            BCDSettingsGroup(title: "In the background",
+                             footer: "Off, BCD behaves as it always has: iOS pauses a game and a download within seconds of leaving BCD. On, BCD stays running with a silent audio session, so the phone may run warmer and use more battery meanwhile; it holds its own CPU use down so iOS does not end it, and a game loads slower than in front. iOS can still close BCD in the background when another app needs the memory.") {
+                BCDSettingsValueRow(id: BCDSettingsID.control(.memory, "background-game"), title: "Keep a game running",
+                                    note: "When you switch apps or lock the screen, a running game keeps loading for this long instead of being paused. It draws nothing until you are back, and its sound is muted. Then it pauses, and a notification says so if you allowed them. Applies the next time you leave BCD.",
+                                    choices: BCDBackgroundRows.choices(current: backend.backgroundGame, steps: BCDBackgroundRows.gameSteps),
+                                    value: backend.backgroundGame) { backend.setBackgroundGame($0) }
+                BCDSettingsValueRow(id: BCDSettingsID.control(.memory, "background-download"), title: "Keep downloads running",
+                                    note: "A Steam, Epic, GOG, EA or itch.io download goes on for this long after you leave BCD, where iOS would otherwise stop it. iOS 26 and later often keeps a download going by itself.",
+                                    choices: BCDBackgroundRows.choices(current: backend.backgroundDownload, steps: BCDBackgroundRows.downloadSteps),
+                                    value: backend.backgroundDownload) { backend.setBackgroundDownload($0) }
+                BCDSettingsToggleRow(id: BCDSettingsID.control(.memory, "background-sound"), title: "Hear the game meanwhile",
+                                     note: "Off: the game's sound is muted while BCD is in the background, and other apps' audio plays normally. On: you keep hearing the game.",
+                                     isOn: backend.backgroundSound, enabled: backend.backgroundGame != "") { backend.setBackgroundSound($0) }
             }
             if backend.extensionTestAvailable {
                 BCDSettingsGroup(title: "Experiments") {
@@ -203,11 +260,33 @@ struct BCDResolution: Hashable {
     /// The performance HUD every game takes that has none of its own (BCDHUDCore.swift): "" for none, else "1" to "4".
     var hudEveryGame: String { get }
     func setHUDEveryGame(_ value: String)
+    /// env.MADEIRA_PRESENT_FX for every game that has no line of its own: frame generation is switched while the game runs.
+    var presentFX: Bool { get }
+    func setPresentFX(_ on: Bool)
+    /// Lossless Scaling's setup on this device, for its frame generation (BCDLossless.swift): the state, and the three things to do.
+    var lossless: BCDLossless.Setup { get }
+    func losslessCheck()
+    func losslessDownload()
+    func losslessRemove()
+    /// The device test of Apple frame interpolation (BCDVTInterp.swift): its state and text, whether it can run now (iOS 26, no game
+    /// running), and the button.
+    var vtProbe: BCDVTInterp.Probe { get }
+    var vtProbeBlocked: String? { get }
+    func vtProbeRun()
 }
 
 extension BCDGraphicsBackend {
     var hudEveryGame: String { "" }
     func setHUDEveryGame(_ value: String) {}
+    var presentFX: Bool { false }
+    func setPresentFX(_ on: Bool) {}
+    var lossless: BCDLossless.Setup { BCDLossless.Setup() }
+    func losslessCheck() {}
+    func losslessDownload() {}
+    func losslessRemove() {}
+    var vtProbe: BCDVTInterp.Probe { BCDVTInterp.Probe() }
+    var vtProbeBlocked: String? { nil }
+    func vtProbeRun() {}
 }
 
 struct BCDGraphicsSettings<Backend: BCDGraphicsBackend>: View {
@@ -228,8 +307,8 @@ struct BCDGraphicsSettings<Backend: BCDGraphicsBackend>: View {
                 }
                 BCDSettingsValueRow(id: BCDSettingsID.control(.graphics, "metalfx"), title: "MetalFX upscaling",
                                     note: "Apple's MetalFX draws each frame smaller and scales it up: faster, a little softer.",
-                                    choices: [BCDSettingsChoice(value: "", label: "Off"), BCDSettingsChoice(value: "1.5", label: "1.5×"),
-                                              BCDSettingsChoice(value: "2", label: "2×")],
+                                    choices: [BCDSettingsChoice(value: "", label: "Off"), BCDSettingsChoice(value: BCDUpscale.fit, label: "To the screen"),
+                                              BCDSettingsChoice(value: "1.5", label: "1.5×"), BCDSettingsChoice(value: "2", label: "2×")],
                                     value: backend.metalFX) { backend.setMetalFX($0) }
                 BCDSettingsValueRow(id: BCDSettingsID.control(.graphics, "d3d9"), title: "Direct3D 9 (32-bit games)",
                                     note: "How 32-bit Direct3D 9 games draw: through the emulated frontend, the standard, or a native ARM64 one.",
@@ -249,6 +328,41 @@ struct BCDGraphicsSettings<Backend: BCDGraphicsBackend>: View {
                                               BCDSettingsChoice(value: "3", label: "3"), BCDSettingsChoice(value: "4", label: "4")],
                                     value: backend.hudEveryGame) { backend.setHUDEveryGame($0) }
             }
+            BCDSettingsGroup(title: "Experimental", footer: "A game's own switch, on its page under Display, comes first.") {
+                BCDSettingsToggleRow(id: BCDSettingsID.control(.graphics, "present-fx"),
+                                     title: "Live upscaling and frame generation",
+                                     note: BCDFrameGenMenu.switchNote,
+                                     isOn: backend.presentFX) { backend.setPresentFX($0) }
+                // madeira-bcd (Porthole port, item 3): what iOS's own frame interpolation does on this device, without a game. iOS 26
+                // has it; below that the page is as it was.
+                if #available(iOS 26.0, *) {
+                    let probe = backend.vtProbe
+                    BCDSettingsActionRow(id: BCDSettingsID.control(.graphics, "vt-probe"), title: BCDVTInterp.Probe.title,
+                                         note: backend.vtProbeBlocked ?? BCDVTInterp.Probe.detail,
+                                         symbol: "film.stack", enabled: !probe.running && backend.vtProbeBlocked == nil) { backend.vtProbeRun() }
+                    if probe.running || !probe.text.isEmpty {
+                        BCDSettingsInfoRow(title: "Apple frame interpolation on this device", note: probe.words, value: probe.value)
+                    }
+                }
+            }
+            BCDSettingsGroup(title: "Lossless Scaling", footer: BCDLossless.setupFooter) {
+                let setup = backend.lossless
+                BCDSettingsInfoRow(title: "Frame generation with your copy",
+                                   note: [setup.words + (setup.progress.map { " \(Int(($0 * 100).rounded()))%" } ?? ""), setup.message].compactMap { $0 }.joined(separator: " "),
+                                   value: setup.usable ? "Ready" : setup.installed ? "Check needed" : "Not set up")
+                if setup.installed {
+                    BCDSettingsActionRow(id: BCDSettingsID.control(.graphics, "lossless-check"), title: "Check my Steam purchase again",
+                                         note: "Asks Steam whether this account still owns Lossless Scaling, and renews the week.",
+                                         symbol: "checkmark.seal", enabled: setup.signedIn && setup.busy == nil) { backend.losslessCheck() }
+                    BCDSettingsActionRow(id: BCDSettingsID.control(.graphics, "lossless-remove"), title: "Remove it from this device",
+                                         note: "Deletes the sealed file and the record of the check. Games go back to running without it.",
+                                         symbol: "trash", destructive: true, enabled: setup.busy == nil) { backend.losslessRemove() }
+                } else {
+                    BCDSettingsActionRow(id: BCDSettingsID.control(.graphics, "lossless-download"), title: "Check my purchase and download from Steam",
+                                         note: "A few megabytes, with your own Steam account. Only its Lossless.dll is kept, sealed for this device and account.",
+                                         symbol: "arrow.down.circle", enabled: setup.signedIn && setup.busy == nil) { backend.losslessDownload() }
+                }
+            }
             if backend.displaySwitchesShown && backend.displayRate > 60 {
                 BCDSettingsGroup(title: "Display") {
                     BCDSettingsToggleRow(id: BCDSettingsID.control(.graphics, "hold-rate"),
@@ -258,9 +372,16 @@ struct BCDGraphicsSettings<Backend: BCDGraphicsBackend>: View {
                 }
             }
             if BCDFoldableDevice.isThisDevice {   // madeira-bcd foldable (experimental, BCDFoldable.swift): the foldable iPhone's Settings only; every other device's Graphics page is unchanged
-                BCDSettingsGroup(title: "Foldable iPhone") { BCDFoldableSettingsRow() }
+                BCDSettingsGroup(title: "Foldable iPhone") {
+                    BCDDuoEnhancementsSettingsRow()
+                    BCDFoldableSettingsRow()
+                }
             }
             if backend.restartNeeded { BCDSettingsNotice(text: bcdSettingsRestartNote) }
+            // OpenGL is a game's choice (its page, Options, Direct3D): this says so, once, where graphics are chosen for every game.
+            BCDSettingsGroup(title: "OpenGL") {
+                BCDSettingsInfoRow(title: BCDOpenGL.settingsTitle, note: BCDOpenGL.settingsNote, value: BCDOpenGL.settingsValue)
+            }
             BCDSettingsGroup {
                 BCDSettingsActionRow(id: BCDSettingsID.control(.graphics, "more"), title: "More graphics options",
                                      note: "Direct3D, DXMT and MetalFX in All settings.", symbol: "slider.horizontal.3") {
@@ -508,8 +629,8 @@ struct BCDControlsSettings<Backend: BCDControlsBackend>: View {
     /// Settings' own words for the engine's controller choices, by value (the engine's label
     /// stays for a value Settings does not know).
     private static var apiWords: [String: String] {
-        ["": "Xbox controller (standard)", "hid": "HID: DualSense or plain pad", "dualsense": "Always a DualSense",
-         "generic": "Always a plain gamepad"]
+        ["": "Xbox controller (standard)", "xbox360": "Xbox 360, also as a device", "hid": "HID: DualSense or plain pad",
+         "dualsense": "Always a DualSense", "generic": "Always a plain gamepad"]
     }
     private static var outputWords: [String: String] {
         ["": "All of it (standard)", "hid": "DualSense effects only", "xinput": "Rumble only", "0": "Nothing"]
@@ -628,31 +749,54 @@ struct BCDStorageItem: Identifiable, Hashable {
     var addingGames: Bool { get }
     var addGamesMessage: String? { get }
     func addEveryGame()
-    /// Games kept on an SSD (USB-C): the folder chosen in Files appears as C:\External. Only the live backend has it.
+    /// External drives (USB-C SSDs and drives; ExternalDrives.swift, from Madeira #464): each folder chosen in Files is a drive
+    /// letter and C:\External\<name>. Only the live backend has them.
     var supportsExternalGames: Bool { get }
+    var externalDrives: [BCDExternalDrive] { get }
+    /// What the last drive action said (a refusal, how many games were added); nil: nothing to say.
     var externalGamesMessage: String? { get }
-    var externalGamesFree: Int64? { get }
-    /// The name of the folder chosen last, once one was (the Reconnect button); nil before.
-    var externalGamesSavedFolder: String? { get }
-    var canConnectExternalGames: Bool { get }
-    func connectExternalGames(_ url: URL)
-    /// The saved folder again, without the picker. `chooseAgain` runs when iOS no longer lets BCD open it.
-    func reconnectExternalGames(chooseAgain: @escaping () -> Void)
+    /// No game runs and no game is being moved: drives can be added, reopened and removed (a removal also waits for downloads).
+    var canChangeExternalDrives: Bool { get }
+    /// The drive Steam installs go to by default (its id), or "" for this device.
+    var steamInstallDrive: String { get }
+    func addExternalDrive(_ url: URL)
+    /// Opens a drive again without the picker; `chooseAgain` runs when iOS no longer opens it (the picker, to pick it again).
+    func reconnectExternalDrive(_ id: String, chooseAgain: @escaping () -> Void)
+    func findGames(onDrive id: String)
+    /// How fast the drive is as BCD uses it (BCDDriveSpeed.swift); the answer is the drives' message.
+    func testSpeed(ofDrive id: String)
+    func removeExternalDrive(_ id: String)
+    func setSteamInstallDrive(_ id: String)
     /// What the folder picker did ("opened", "answered", "failed: ...", "closed"), for the log.
     func noteExternalPicker(_ what: String)
     var prefixToolsView: AnyView? { get }
+}
+
+/// One external drive of Settings › Storage › External drives.
+struct BCDExternalDrive: Identifiable, Hashable {
+    var id: String
+    /// Its Windows drive letter, upper case ("E").
+    var letter: String
+    var name: String
+    var connected: Bool
+    var free: Int64?
+    var total: Int64?
 }
 
 extension BCDStorageBackend {
     /// Round 604: copies, export, import and a fresh registry for the Windows prefix (BCDPrefixTools.swift); nil: the group is left out.
     var prefixToolsView: AnyView? { nil }
     var supportsExternalGames: Bool { false }
+    var externalDrives: [BCDExternalDrive] { [] }
     var externalGamesMessage: String? { nil }
-    var externalGamesFree: Int64? { nil }
-    var externalGamesSavedFolder: String? { nil }
-    var canConnectExternalGames: Bool { false }
-    func connectExternalGames(_ url: URL) {}
-    func reconnectExternalGames(chooseAgain: @escaping () -> Void) {}
+    var canChangeExternalDrives: Bool { false }
+    var steamInstallDrive: String { "" }
+    func addExternalDrive(_ url: URL) {}
+    func reconnectExternalDrive(_ id: String, chooseAgain: @escaping () -> Void) {}
+    func findGames(onDrive id: String) {}
+    func testSpeed(ofDrive id: String) {}
+    func removeExternalDrive(_ id: String) {}
+    func setSteamInstallDrive(_ id: String) {}
     func noteExternalPicker(_ what: String) {}
 }
 
@@ -730,44 +874,82 @@ struct BCDStorageSettings<Backend: BCDStorageBackend>: View {
         .bcdCard(padding: 16)
     }
 
-    /// Settings > Storage > External SSD (thebcd69/bcd-games#12 by Pardoxum, with Reconnect). The folder picker is attached
-    /// here, on the group, not on the page: the page already carries the saves backup's importer, and two importers
-    /// on one view can displace each other.
+    /// Settings › Storage › External drives (from Madeira #464, Settings › External drives): every drive or folder added from
+    /// Files, its letter, whether it is connected and its free room; a tap offers Find games, Reconnect and Remove; Steam
+    /// installs picks where a Steam game's Install goes by default. The folder picker is attached here, on the group, not on the
+    /// page: the page already carries the saves backup's importer, and two importers on one view can displace each other.
     private var externalGames: some View {
-        let saved = backend.externalGamesSavedFolder
-        return BCDSettingsGroup(title: "External SSD",
-                                footer: "Connect a USB-C SSD and choose its games folder in Files. Open Add a game → External to add its programs. Windows and existing saves stay on this device. Store downloads still install on this device. After you unplug the SSD or restart the phone, tap Reconnect; if iOS has forgotten the folder, BCD opens Files for you to choose it again. Quit games before changing the connection, and keep the SSD connected while playing.") {
-            if let saved {
-                BCDSettingsActionRow(id: BCDSettingsID.control(.storage, "external-reconnect"),
-                                     title: "Reconnect \(saved)", note: backend.externalGamesMessage,
-                                     symbol: "externaldrive.badge.checkmark", enabled: backend.canConnectExternalGames) {
-                    backend.reconnectExternalGames {
-                        backend.noteExternalPicker("opened (after reconnect)")
-                        choosingExternalGames = true
-                    }
-                }
-            }
-            BCDSettingsActionRow(id: BCDSettingsID.control(.storage, "external-games"),
-                                 title: saved == nil ? "Choose an SSD folder" : "Choose another SSD folder",
-                                 note: saved == nil ? backend.externalGamesMessage : nil, symbol: "externaldrive",
-                                 enabled: backend.canConnectExternalGames) {
+        let drives = backend.externalDrives
+        return BCDSettingsGroup(title: "External drives",
+                                footer: "Choose a folder on a USB-C SSD or drive in Files, or the whole drive. Windows sees it as its own drive letter and as C:\\External\\<name>. Steam libraries on it (steamapps or SteamLibrary) appear in your library and start through BCD Dock; Find games adds its other games. A Steam game's page can install it on the drive (in <name>\\SteamLibrary), and Options › Location moves a game between this device and a drive. Use an exFAT or APFS drive; NTFS is read-only on iPhone and iPad. Keep the drive connected while playing. After you plug it in again BCD opens it by itself; if it does not, tap the drive and choose Reconnect.") {
+            ForEach(drives) { drive in driveRow(drive) }
+            BCDSettingsActionRow(id: BCDSettingsID.control(.storage, "external-add"),
+                                 title: drives.isEmpty ? "Add a drive or folder" : "Add another drive or folder",
+                                 note: drives.isEmpty ? backend.externalGamesMessage : nil, symbol: "externaldrive.badge.plus",
+                                 enabled: backend.canChangeExternalDrives) {
                 backend.noteExternalPicker("opened")
                 choosingExternalGames = true
             }
-            if let free = backend.externalGamesFree {
-                BCDSettingsInfoRow(title: "Free on external drive", value: BCDFormat.bytes(free))
+            if !drives.isEmpty {
+                BCDSettingsValueRow(id: BCDSettingsID.control(.storage, "external-steam"), title: "Steam installs",
+                                    note: "Where a Steam game's Install goes first; the other place is the choice beside it.",
+                                    choices: [BCDSettingsChoice(value: "", label: "This device")]
+                                        + drives.map { BCDSettingsChoice(value: $0.id, label: $0.name) },
+                                    value: backend.steamInstallDrive, enabled: backend.canChangeExternalDrives) {
+                    backend.setSteamInstallDrive($0)
+                }
+                if let message = backend.externalGamesMessage {
+                    BCDSettingsInfoRow(title: message, value: "")
+                }
             }
         }
         .fileImporter(isPresented: $choosingExternalGames, allowedContentTypes: [.folder]) { result in
             switch result {
             case .success(let url):
                 backend.noteExternalPicker("answered")
-                backend.connectExternalGames(url)
+                backend.addExternalDrive(url)
             case .failure(let error):
                 backend.noteExternalPicker("failed: \(error.localizedDescription)")
             }
         }
         .onChange(of: choosingExternalGames) { _, open in if !open { backend.noteExternalPicker("closed") } }
+    }
+
+    private func driveRow(_ drive: BCDExternalDrive) -> some View {
+        var note = drive.connected ? "Connected" : "Not connected"
+        if drive.connected, let free = drive.free {
+            note += " · \(BCDFormat.bytes(free)) free" + (drive.total.map { " of \(BCDFormat.bytes($0))" } ?? "")
+        }
+        return BCDSettingsActionRow(id: BCDSettingsID.control(.storage, "external-drive.\(drive.id)"),
+                                    title: "\(drive.letter): \(drive.name)", note: note,
+                                    symbol: drive.connected ? "externaldrive.fill.badge.checkmark" : "externaldrive.badge.xmark",
+                                    enabled: backend.canChangeExternalDrives) {
+            var choices: [BCDSettingsConfirm.Choice] = []
+            if drive.connected {
+                choices.append(.init(title: "Find games") { backend.findGames(onDrive: drive.id) })
+                choices.append(.init(title: "Test speed") { backend.testSpeed(ofDrive: drive.id) })   // madeira-bcd (Porthole port, item 6)
+            } else {
+                choices.append(.init(title: "Reconnect") {
+                    backend.reconnectExternalDrive(drive.id) {
+                        backend.noteExternalPicker("opened (after reconnect)")
+                        choosingExternalGames = true
+                    }
+                })
+            }
+            choices.append(.init(title: "Remove", destructive: true) {
+                // A second question, after the first has closed and given the focus back to the drive's row.
+                DispatchQueue.main.async {
+                    model.ask(BCDSettingsConfirm(title: "Remove \(drive.name)?",
+                                                 message: "BCD forgets this drive and removes its games from the library. The files on the drive are kept.",
+                                                 choices: [.init(title: "Remove", destructive: true) { backend.removeExternalDrive(drive.id) }]))
+                }
+            })
+            model.ask(BCDSettingsConfirm(title: "\(drive.letter): \(drive.name)",
+                                         message: drive.connected
+                                            ? "Find games adds the games on it to your library (its Steam libraries are already there). Test speed writes and reads about 70 MB on it and says how fast it is."
+                                            : "Plug the drive in, then tap Reconnect. If iOS no longer opens it, Files opens: choose the same folder again, and its games stay in your library.",
+                                         choices: choices))
+        }
     }
 
     private var games: [BCDGame] {
@@ -1121,6 +1303,12 @@ enum BCDDiagnostic: String, CaseIterable, Identifiable {
     /// A line a second (frame rate, CPU, memory, heat) kept for the session and sent with its log (BCDPerfTraceLive.swift). Off unless turned on.
     var perfTrace: Bool { get }
     func setPerfTrace(_ on: Bool)
+    /// madeira-bcd (Porthole port, item 10): auto-tune asks before it tries a fix. Off unless turned on.
+    var asksBeforeFix: Bool { get }
+    func setAsksBeforeFix(_ on: Bool)
+    /// madeira-bcd (Porthole port, item 11): a big log is sent without most of its repeated diagnostics. Off unless turned on.
+    var thinsLogs: Bool { get }
+    func setThinsLogs(_ on: Bool)
 }
 
 extension BCDLogsBackend {
@@ -1131,6 +1319,10 @@ extension BCDLogsBackend {
     func setScreenshotsToPhotos(_ on: Bool) {}
     var perfTrace: Bool { false }
     func setPerfTrace(_ on: Bool) {}
+    var asksBeforeFix: Bool { false }
+    func setAsksBeforeFix(_ on: Bool) {}
+    var thinsLogs: Bool { false }
+    func setThinsLogs(_ on: Bool) {}
 }
 
 struct BCDLogsSettings<Backend: BCDLogsBackend>: View {
@@ -1183,6 +1375,10 @@ struct BCDLogsSettings<Backend: BCDLogsBackend>: View {
                 BCDSettingsToggleRow(id: BCDSettingsID.control(.logs, "perftrace"), title: "Performance trace",
                                      note: "While a game runs, BCD writes one line a second (frame rate, the slowest frame, CPU, memory left, heat) to a small file, an hour at most. When you send that game's log, the trace goes with it, so a slowdown can be seen in time. Costs nothing while off.",
                                      isOn: backend.perfTrace) { backend.setPerfTrace($0) }
+                // madeira-bcd (Porthole port, item 11): off by default.
+                BCDSettingsToggleRow(id: BCDSettingsID.control(.logs, "thinlogs"), title: "Make big logs smaller before sending",
+                                     note: "A log of 1.5 MB or more is sent without most of its repeated diagnostics: the first 150 lines of each kind and one in 40 after that, with BCD's own lines, its measurements and the start and end of the log kept whole. It sends faster; the log on this device stays complete. Off: logs are sent whole.",
+                                     isOn: backend.thinsLogs) { backend.setThinsLogs($0) }
                 ForEach(BCDDiagnostic.allCases) { item in
                     BCDSettingsToggleRow(id: BCDSettingsID.control(.logs, item.rawValue), title: item.title, note: item.note,
                                          isOn: backend.diagnostic(item)) { backend.setDiagnostic(item, $0) }
@@ -1196,6 +1392,12 @@ struct BCDLogsSettings<Backend: BCDLogsBackend>: View {
                 BCDSettingsToggleRow(id: BCDSettingsID.control(.logs, "autotune"), title: "Auto-tune",
                                      note: "On by default for every game (each game's page has its own switch). When a game crashes, freezes or is closed by iOS, BCD looks through its log afterwards and tries one known fix at its next start, and keeps it if the game gets further. Your own settings always win.",
                                      isOn: backend.crashTuning) { backend.setCrashTuning($0) }
+                // madeira-bcd (Porthole port, item 10): off by default; auto-tune then waits for a yes before it tries a fix.
+                if backend.crashTuning {
+                    BCDSettingsToggleRow(id: BCDSettingsID.control(.logs, "askfix"), title: "Ask before trying a fix",
+                                         note: "Auto-tune still reads the log after a crash, but before it adds a fix to a game it says what it would try and waits for Try it next start. Not now keeps the game as it is; the game's page keeps the suggestion. Once a fix is kept, you can undo it from the same message.",
+                                         isOn: backend.asksBeforeFix) { backend.setAsksBeforeFix($0) }
+                }
                 BCDSettingsToggleRow(id: BCDSettingsID.control(.logs, "crashprompt"), title: "Ask about a session that closed unexpectedly",
                                      note: "When BCD was closed while a game was running (iOS ran out of memory, or it crashed), BCD asks once at the next start whether to send that session's log. It never asks twice about the same session.",
                                      isOn: backend.asksAfterUnexpectedClose) { backend.setAsksAfterUnexpectedClose($0) }

@@ -1,3 +1,5 @@
+/* Portions copyright 2026 Russell Barton: code taken from https://github.com/thebcd69/bcd-games (pull request #46 by rbarton124)
+ * under LGPL-2.1-or-later and modified for BCD in November 2026. See THIRD-PARTY-NOTICES.md. */
 /*
  * Unix interface for loader functions
  *
@@ -2276,12 +2278,43 @@ static int ios_ntdll_xsec_on( void )
     return e && e[0] == '1' && !e[1];
 }
 
+/* madeira-bcd: env.MADEIRA_WIN64_FRESH = 1 (default off; tools/build-wine-fresh-dlls.sh): the rebuilt 64-bit Wine set. The committed 64-bit Wine
+ * DLLs are frozen binaries that no step rebuilds, so a source fix reaches only the 32-bit build; the rebuilt set (the pinned Wine source plus
+ * BCD's patch scripts) ships next to them as <name>-fresh.dll in both PE folders, only for the modules whose rebuild is not the committed file.
+ * The ntdll of a process comes from here: ntdll-fresh.dll, or with env.MADEIRA_NTDLL_XSEC = 1 / MADEIRA_NTDLL_SYNC the same variant built on the
+ * rebuilt source (ntdll-fresh-xsec.dll, ntdll-fresh-sync.dll, ARM64EC only). A file the build did not make is not an error: the older name below is
+ * used and one line says so. Every other DLL of the set is linked by app/Madeira/WineProcessBridge.m. Exactly "1" turns it on. */
+static int ios_win64_fresh_on( void )
+{
+    const char *e = getenv( "MADEIRA_WIN64_FRESH" );
+    return e && e[0] == '1' && !e[1];
+}
+
 static char *ios_ec_ntdll_name( const char *dir, const char *pe_dir )
 {
     static int said;
     char *name = NULL;
     int mode = ios_ntdll_sync_mode();
 
+    if (ios_win64_fresh_on() && (strstr( pe_dir, "arm64ec" ) || strstr( pe_dir, "aarch64" )))   /* the 64-bit PE folders only */
+    {
+        static int fresh_said[3];
+        int ec = strstr( pe_dir, "arm64ec" ) != NULL;
+        int v = ec ? (ios_ntdll_xsec_on() ? 1 : mode ? 2 : 0) : 0;
+        const char *suffix[3] = { "", "-xsec", "-sync" };
+
+        if (asprintf( &name, "%s%s/ntdll-fresh%s.dll", dir, pe_dir, suffix[v] ) < 0) name = NULL;
+        if (name && !access( name, R_OK ))
+        {
+            if (!fresh_said[v]++)
+                dprintf( 2, "[win64-fresh] %s (opt-in, env.MADEIRA_WIN64_FRESH = 1; unset maps the committed ntdll.dll%s)\n", name,
+                         v ? "; this is the variant built on the rebuilt source" : "" );
+            return name;
+        }
+        if (!fresh_said[v]++) dprintf( 2, "[win64-fresh] this build has no ntdll-fresh%s.dll -- the ntdll of the older sets is mapped\n", suffix[v] );
+        free( name );
+        name = NULL;
+    }
     if (ios_ntdll_xsec_on() && !strcmp( pe_dir, "/arm64ec-windows" ))
     {
         static int xsec_said;
@@ -2719,6 +2752,9 @@ static void redirect_ntdll_functions( HMODULE module )
  * session image (including the Round-7 EC unix-call swap), with every
  * PE-.data write synced into the pool copy.
  */
+/* madeira-bcd x64-hook-zone (virtual_ios.c): the next image this thread maps is a 64-bit process's ntdll */
+extern void ios_hook_zone_request( int on, const void *child_peb );
+
 static int ios_load_child_ec_ntdll( PEB *child_peb )
 {
     static WCHAR path[] = {'\\','?','?','\\','C',':','\\','w','i','n','d','o','w','s','\\',
@@ -2744,8 +2780,10 @@ static int ios_load_child_ec_ntdll( PEB *child_peb )
     else name = ios_ec_ntdll_name( dll_dir, pe_dir );   /* madeira-bcd: ntdll-sync.dll */
 
     dprintf(2, "[ec-child-ntdll] loading %s for peb=%p\n", name, (void *)child_peb);
+    ios_hook_zone_request( 1, child_peb );   /* madeira-bcd x64-hook-zone: free room above this ntdll for hook code */
     status = open_builtin_pe_file( name, &attr, &module, &size, &info, 0, 0,
                                    IMAGE_FILE_MACHINE_AMD64, FALSE, 0 );
+    ios_hook_zone_request( 0, NULL );
     if (status == STATUS_IMAGE_NOT_AT_BASE) status = virtual_relocate_module( module );
     if (status)
     {
@@ -2943,7 +2981,15 @@ static void load_ntdll(void)
 #endif
 
     if (is_arm64ec()) machine = main_image_info.Machine;
+#ifdef WINE_IOS
+    /* madeira-bcd x64-hook-zone: a 64-bit main program gets free room above its ntdll for hook code (32-bit code
+     * cannot hook the 64-bit ntdll, so a 32-bit session gets none) */
+    ios_hook_zone_request( !ios_main_image_i386, NULL );
+#endif
     status = open_builtin_pe_file( name, &attr, &module, &size, &info, 0, 0, machine, FALSE, 0 );
+#ifdef WINE_IOS
+    ios_hook_zone_request( 0, NULL );
+#endif
     if (status == STATUS_DLL_NOT_FOUND)
     {
         free( name );

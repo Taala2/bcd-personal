@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright 2026 thebcd69 (BCD)
 // BCD Material: additional terms under GPL-3.0 section 7 apply; see LICENSE-BCD.md.
+// Portions copyright 2026 Paulo Eduardo Correa (pauloec): the native iPhone Duo interface (Liquid Glass, system tabs, controller navigation, Windows desktop on Home), from thebcd69/bcd-games pull request #43; GPL-3.0-only, modified for BCD in November 2026. See THIRD-PARTY-NOTICES.md.
 
 import Foundation
 import SwiftUI
@@ -15,12 +16,15 @@ import SwiftUI
 // MARK: - What the interface shows
 
 enum BCDStoreFront: String, CaseIterable, Codable, Hashable {
-    case steam, epic, gog, local
+    case steam, epic, gog, itch, ea, amazon, local
     var title: String {
         switch self {
         case .steam: return "Steam"
         case .epic: return "Epic Games"
         case .gog: return "GOG"
+        case .itch: return "itch.io"
+        case .ea: return "EA games"
+        case .amazon: return "Amazon Games"   // madeira-bcd (Porthole port, item 13): only while the experimental store is on
         case .local: return "Local"
         }
     }
@@ -48,6 +52,8 @@ enum BCDGameState: Hashable {
 }
 
 struct BCDGame: Identifiable, Hashable {
+    /// The built-in Windows environment is a utility, not a game.
+    var isWindowsDesktop = false
     var id: String
     var title: String
     var store: BCDStoreFront
@@ -107,6 +113,9 @@ struct BCDDownload: Identifiable, Hashable {
     var bytesPerSecond: Double
     var paused = false
     var failed: String?
+    /// Where the bytes come from while it downloads, said only when the player turned on downloads from a PC on this network ("From a PC on
+    /// this network · 2 GB so far", "From Steam's servers"); nil otherwise, and the row says nothing more.
+    var source: String? = nil
     var fraction: Double { totalBytes > 0 ? min(1, Double(doneBytes) / Double(totalBytes)) : 0 }
 }
 
@@ -140,6 +149,10 @@ struct BCDSystemStatus: Hashable {
     var freeDeviceBytes: Int64?
     var totalDeviceBytes: Int64?
     var freeExternalBytes: Int64?
+    /// The external drive a Steam game's "External drive" install goes to (Settings › Storage › External drives); nil: none is connected.
+    var externalDriveName: String?
+    /// That drive is the one Settings chose for Steam installs: a game page's Install goes there, "This device" is the other choice.
+    var installsToExternal = false
 }
 
 // MARK: - What the interface asks for
@@ -158,6 +171,12 @@ struct BCDSystemStatus: Hashable {
     func signOut(_ store: BCDStoreFront)
     func addGameFromFiles()
     func refreshLibrary()
+    /// A store's own tool (itch.io's Find a game); the stores that have none do nothing.
+    func openStoreTool(_ store: BCDStoreFront)
+}
+
+extension BCDActions {
+    func openStoreTool(_ store: BCDStoreFront) {}
 }
 
 // MARK: - The store
@@ -170,6 +189,16 @@ struct BCDSystemStatus: Hashable {
     @Published var system = BCDSystemStatus()
     /// A game is running: the interface is torn down and draws nothing until it ends.
     @Published var inGame = false
+    @Published var windowsRunning = false
+    @Published var windowsStarting = false
+    @Published var windowsClosing = false
+    @Published var windowsError: String?
+    @Published var restartMessage: String?
+    var closeForRestart: (() -> Void)?
+    @Published var windowsNeedsRestart = false
+    var showWindows: (() -> Void)?
+    var stopWindows: (() -> Void)?
+    var restartWindows: (() -> Void)?
     /// The game whose Play is turning JIT on before it starts (its Play reads so); nil otherwise.
     @Published var startingJIT: String?
     /// The games whose Steam Cloud saves differ from this device's: they wait for a choice on each

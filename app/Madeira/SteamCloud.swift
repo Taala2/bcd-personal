@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Madeira Converter Exception: see LICENSE-EXCEPTION.md
+// Portions copyright 2026 wamei: code taken from https://github.com/willfaust/Madeira (pull request #404)
+// under GPL-3.0-or-later and modified for BCD in October 2026. See THIRD-PARTY-NOTICES.md.
+// Portions copyright 2026 intraducine and David Brookes: code taken from https://github.com/willfaust/Madeira (pull request #464)
+// under GPL-3.0-or-later and modified for BCD in November 2026. See THIRD-PARTY-NOTICES.md.
 //
 // Steam Cloud saves for games in Madeira Dock's Steam library
 // (docs/STEAM_CLOUD.md). Written from Steam's published service messages
@@ -97,6 +101,10 @@ struct SteamCloudPaths: Sendable {
     var remoteFolder: URL
     var steamID: UInt64
     var overrides: [SteamAppInfo.RootOverride]
+    /// Present only for an SSD install. Internal Wine user-folder links retain
+    /// their existing behaviour; GameInstall saves must stay inside this library.
+    var externalLibraryRoot: URL? = nil
+    var externalLibraryID: String? = nil
 
     /// The Windows user folder games write to. A prefix can hold several
     /// folders under users (the template's, earlier builds'); Wine names the
@@ -181,19 +189,33 @@ struct SteamCloudPaths: Sendable {
     /// Wine treats names without regard to case and iOS does not: follow the
     /// components by case-insensitive match, falling back to the given
     /// spelling for the part that does not exist yet.
-    static func resolve(base: URL, parts: [String]) -> URL {
-        var url = base
+    func resolve(base: URL, parts: [String]) throws -> URL {
+        var url = try validateInstallURL(base)
         for (index, part) in parts.enumerated() {
-            let exact = url.appendingPathComponent(part, isDirectory: index < parts.count - 1)
+            let exact = try validateInstallURL(url.appendingPathComponent(part, isDirectory: index < parts.count - 1))
             if FileManager.default.fileExists(atPath: exact.path) { url = exact; continue }
             let names = (try? FileManager.default.contentsOfDirectory(atPath: url.path)) ?? []
             if let match = names.first(where: { $0.caseInsensitiveCompare(part) == .orderedSame }) {
-                url = url.appendingPathComponent(match, isDirectory: index < parts.count - 1)
+                url = try validateInstallURL(url.appendingPathComponent(match, isDirectory: index < parts.count - 1))
             } else {
                 url = exact
             }
         }
         return url
+    }
+
+    /// Check lexical components before following them, including dangling links.
+    /// Enumeration also calls this before inspecting a local-only save.
+    func validateInstallURL(_ url: URL) throws -> URL {
+        guard let externalLibraryRoot else { return url }
+        guard try externalLibraryRoot.checkResourceIsReachable() else { throw ExternalStorageError.unavailable }
+        if let externalLibraryID { try ExternalStorageIdentity.verify(externalLibraryID, root: externalLibraryRoot) }
+        let path = url.standardizedFileURL.path
+        let install = installFolder.standardizedFileURL.path
+        guard path == install || path.hasPrefix(install + "/") else { return url }
+        let root = externalLibraryRoot.resolvingSymlinksInPath().standardizedFileURL
+        guard path.hasPrefix(root.path + "/") else { throw ExternalStorageError.unsafePath }
+        return try ExternalStoragePath.native(String(path.dropFirst(root.path.count + 1)), root: root)
     }
 }
 
@@ -257,14 +279,15 @@ struct SteamCloudAudit: Equatable, Sendable {
     private static func key(_ url: URL) -> String { url.resolvingSymlinksInPath().path.lowercased() }
 
     /// Compares the listing with the prefix. Reads files; changes nothing.
-    static func run(listing: SteamCloudListing, saveFiles: [SteamAppInfo.SaveFile], paths: SteamCloudPaths) -> SteamCloudAudit {
+    static func run(listing: SteamCloudListing, saveFiles: [SteamAppInfo.SaveFile], paths: SteamCloudPaths) throws -> SteamCloudAudit {
+        _ = try paths.validateInstallURL(paths.installFolder)
         var audit = SteamCloudAudit()
         audit.changeNumber = listing.changeNumber
         var known = Set<String>()   // local paths the cloud lists
         for file in listing.files where file.persistState == 0 {
             audit.cloudFiles += 1
             guard let place = paths.location(cloudPath: file.path) else { audit.unmapped.append(file.path); continue }
-            let url = SteamCloudPaths.resolve(base: place.base, parts: place.parts)
+            let url = try paths.resolve(base: place.base, parts: place.parts)
             known.insert(key(url))
             var entry = SteamCloudEntry(path: file.path, kind: .cloudOnly, cloudSize: file.size, cloudTime: file.timestamp, cloudSHA: file.sha)
             if let local = attributes(url) {
@@ -278,7 +301,7 @@ struct SteamCloudAudit: Equatable, Sendable {
         var folders: [(label: String, url: URL, pattern: String, recursive: Bool)] = []
         for save in saveFiles where save.platforms.isEmpty || save.platforms.contains("windows") {
             guard let place = paths.location(cloudPath: "%\(save.root)%" + (save.path.isEmpty ? "x" : save.path + "/x")) else { continue }
-            let folder = SteamCloudPaths.resolve(base: place.base, parts: Array(place.parts.dropLast()))
+            let folder = try paths.resolve(base: place.base, parts: Array(place.parts.dropLast()))
             // A Windows override moves the folder: its cloud name is not this one, so
             // files found there are not offered for upload.
             if paths.overrides.contains(where: { $0.root.caseInsensitiveCompare(save.root) == .orderedSame
@@ -301,6 +324,7 @@ struct SteamCloudAudit: Equatable, Sendable {
             for case let url as URL in walk {
                 visited += 1
                 if visited > 5_000 { break }
+                _ = try paths.validateInstallURL(url)
                 guard fnmatch(folder.pattern, url.lastPathComponent, FNM_CASEFOLD) == 0, let local = attributes(url) else { continue }
                 let fileKey = key(url)
                 guard !known.contains(fileKey), seen.insert(fileKey).inserted else { continue }
@@ -763,6 +787,17 @@ struct SteamCloudUploadBlock: Sendable {
 }
 
 extension SteamCloudTransfer {
+    /// madeira-bcd: the bytes of a file of `fileCount` bytes that one upload block asks for, or nil when the block lies outside the file.
+    /// offset and length come from Steam: a sum past 2^64 or a length past Int.max stopped the app before; both lie outside the file.
+    static func blockRange(offset: UInt64, length: UInt64, fileCount: Int) -> Range<Int>? {
+        let (stop, overflow) = offset.addingReportingOverflow(length)
+        guard !overflow, length <= UInt64(fileCount) else { return nil }
+        let start = Int(min(offset, UInt64(fileCount)))
+        let end = Int(min(stop, UInt64(fileCount)))
+        guard end - start == Int(length) else { return nil }
+        return start..<end
+    }
+
     /// Sends the parts of one file where Steam asked for them. k_EHTTPMethodPOST
     /// is 3; Steam's storage otherwise takes PUT. Returns each part's HTTP status.
     @discardableResult
@@ -772,10 +807,10 @@ extension SteamCloudTransfer {
             guard let url = block.url else { throw SteamFileError.invalid("Steam gave no usable address for an upload.") }
             var body = block.explicitBody
             if body.isEmpty {
-                let start = Int(min(block.offset, UInt64(file.count)))
-                let end = Int(min(block.offset + block.length, UInt64(file.count)))
-                guard end - start == Int(block.length) else { throw SteamFileError.invalid("Steam asked for a part outside the file.") }
-                body = file.subdata(in: start..<end)
+                guard let range = blockRange(offset: block.offset, length: block.length, fileCount: file.count) else {
+                    throw SteamFileError.invalid("Steam asked for a part outside the file.")
+                }
+                body = file.subdata(in: range)
             }
             var request = URLRequest(url: url)
             request.httpMethod = block.method == 3 ? "POST" : "PUT"
@@ -806,6 +841,10 @@ struct SteamCloudState: Equatable, Sendable {
     }
     /// What the last comparison leaves to the user.
     var conflicts: [SteamCloudEntry] = []
+    /// madeira-bcd: what the last comparison's plan would move without asking: up to the cloud, and down to this device. For the
+    /// game's page, which lists them before anything moves; a sync works from its own fresh plan, not from these.
+    var pendingUp: [SteamCloudEntry] = []
+    var pendingDown: [SteamCloudEntry] = []
     var phase: Phase = .checking
     var audit = SteamCloudAudit()
     var checked: Date?
@@ -815,6 +854,13 @@ struct SteamCloudState: Equatable, Sendable {
     var lastUpload: Int?
     /// Why the last download or upload stopped, shown on the game's page.
     var problem: String?
+
+    mutating func retryFailedCheck() {
+        guard case .failed = phase else { return }
+        phase = .ready
+        checked = nil // cloudHold treats this as stale and requires a fresh audit.
+        problem = nil
+    }
 
     static func == (a: SteamCloudState, b: SteamCloudState) -> Bool {
         a.phase == b.phase && a.audit == b.audit && a.checked == b.checked && a.conflicts == b.conflicts

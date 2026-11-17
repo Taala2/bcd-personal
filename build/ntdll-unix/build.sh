@@ -1,4 +1,6 @@
 #!/bin/bash
+# Portions copyright 2026 Jelly-RayTian, meshoklv, Connor Gow and 125hz: code taken from https://github.com/willfaust/Madeira (pull requests #353, #399, #401 and #462)
+# under GPL-3.0-or-later and modified for BCD in October and November 2026. See THIRD-PARTY-NOTICES.md.
 set -e
 
 BUILD_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -164,6 +166,22 @@ compile_unixlib "$BUILD_DIR/winegstreamer_unixlib_ios.c" "winegstreamer_unixlib"
 # unixlib.h (not winegstreamer's) is the one on the include path.
 compile_unixlib "$BUILD_DIR/winedmo_unixlib_ios.c" "winedmo_unixlib" "winedmo" \
     -I"$WINE_SRC/dlls/winedmo" -I"$FFMPEG_PREFIX/include"
+# madeira-bcd (OpenGL): opengl32's unix side (the wrappers and the generated thunks of wine/dlls/opengl32, as the Wine fork patches them
+# for the winios driver). It dispatches to win32u's WGL layer, whose iOS driver is build/win32u-unix/opengl_ios.c. virtual_ios.c binds
+# these tables only for a session whose game has gl-backend = zink or gles; every other opengl32 keeps the GL-absent stub table.
+compile_unixlib "$WINE_SRC/dlls/opengl32/unix_wgl.c" "opengl32_wgl" "opengl32" \
+    -I"$WINE_SRC/dlls/opengl32"
+compile_unixlib "$WINE_SRC/dlls/opengl32/unix_thunks.c" "opengl32_thunks" "opengl32" \
+    -I"$WINE_SRC/dlls/opengl32"
+# madeira-bcd (Windows Vulkan, docs/BUILDING.md 6c): winevulkan's unix side (instance/device wrappers + the generated thunks). It
+# dispatches to win32u's Vulkan layer (build/win32u-unix/vulkan_ios.c), which loads the session's Vulkan library
+# (MADEIRA_VULKAN_LIBRARY; set only for a game whose file has vulkan = moltenvk). The wow64 table (winevulkan_unix_call_wow64_funcs) is
+# bound for a 32-bit winevulkan.dll in such a session (virtual_ios.c): tools/patch-wine-vulkan-wow64.py, run on the wine tree before
+# this script, makes its thunks add the window base a 32-bit program here needs (ios_wow_host_ptr) instead of Wine's UlongToPtr.
+compile_unixlib "$WINE_SRC/dlls/winevulkan/vulkan.c" "winevulkan_vulkan" "winevulkan" \
+    -I"$WINE_SRC/dlls/winevulkan"
+compile_unixlib "$WINE_SRC/dlls/winevulkan/vulkan_thunks.c" "winevulkan_thunks" "winevulkan" \
+    -I"$WINE_SRC/dlls/winevulkan"
 # MADEIRA ml1990: the wg_parser's H.264/HEVC (VideoToolbox) and AAC
 # (AudioToolbox) decoders.  Its own translation unit with NO Wine header --
 # CoreFoundation and winnt.h disagree about several names -- so it is compiled
@@ -262,7 +280,8 @@ ar rcs "$OBJ_DIR/libntdll_unix.a" \
     "$OBJ_DIR/nsi_network_ios.o" "$OBJ_DIR/nsi_ndis.o" "$OBJ_DIR/nsi_ip.o" \
     "$OBJ_DIR/gnutls_symtab_ios.o" "$OBJ_DIR/ws2_32_unixlib.o" \
     "$OBJ_DIR/bcrypt_unixlib.o" "$OBJ_DIR/secur32_unixlib.o" "$OBJ_DIR/crypt32_unixlib.o" \
-    "$OBJ_DIR/dwrite_unixlib.o" "$OBJ_DIR/dnsapi_unixlib.o" \
+    "$OBJ_DIR/dwrite_unixlib.o" "$OBJ_DIR/dnsapi_unixlib.o" "$OBJ_DIR/opengl32_wgl.o" "$OBJ_DIR/opengl32_thunks.o" \
+    "$OBJ_DIR/winevulkan_vulkan.o" "$OBJ_DIR/winevulkan_thunks.o" \
     "$OBJ_DIR/winegstreamer_unixlib.o" "$OBJ_DIR/wg_parser_apple_ios.o" "$OBJ_DIR/winedmo_unixlib.o" \
     "$OBJ_DIR/bcd_midi_ios.o" "$OBJ_DIR/bcd_midi_synth_ios.o" \
     "$OBJ_DIR/cdrom.o" "$OBJ_DIR/debug.o" "$OBJ_DIR/env.o" "$OBJ_DIR/file.o" \

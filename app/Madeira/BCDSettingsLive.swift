@@ -43,10 +43,14 @@ private enum BCDLiveKey {
     static let memoryPool = "mempool-mb"
     static let swapCoverage = "env.MADEIRA_SWAP_COVERAGE"
     static let eco = "eco"
+    static let backgroundRun = "background-run"                // BackgroundRun.swift: minutes; absent = 0 = off
+    static let backgroundDownload = "background-download"      // minutes; absent = off
+    static let backgroundSound = "background-sound"            // "1" = the game stays audible; absent = muted
     static let desktopSize = "desktop-size"
     static let frameCap = "env.MADEIRA_FPS_CAP"
     static let promote = "env.MADEIRA_PROMOTE"
     static let metalFX = "metalfx-upscale"
+    static let presentFX = "env.MADEIRA_PRESENT_FX"
     static let direct3D9 = "d3d9"
     static let orientation = BCDOrientationLive.key              // "orientation-lock": a BCDOrientationChoice word
     static let xinput = "MADEIRA_XINPUT"                      // MadeiraConfig.flag name, written as env.MADEIRA_XINPUT
@@ -63,6 +67,9 @@ private enum BCDLiveKey {
 @MainActor final class BCDMemoryLive: BCDMemoryBackend {
     @Published private(set) var status = BCDMemoryLive.measure()
     @Published private(set) var eco = false
+    @Published private(set) var backgroundGame = ""
+    @Published private(set) var backgroundDownload = ""
+    @Published private(set) var backgroundSound = false
     @Published private(set) var restartNeeded = false
     @Published private(set) var extensionTestRunning = false
     @Published private(set) var extensionTestLine: String?
@@ -122,6 +129,15 @@ private enum BCDLiveKey {
         out[.syncEngine] = SyncEngine.current.rawValue
         values = out
         eco = MadeiraConfig.bool(BCDLiveKey.eco, default: false)
+        backgroundGame = Self.minutes(MadeiraConfig.get(BCDLiveKey.backgroundRun))
+        backgroundDownload = Self.minutes(MadeiraConfig.get(BCDLiveKey.backgroundDownload))
+        backgroundSound = MadeiraConfig.get(BCDLiveKey.backgroundSound) == "1"
+    }
+
+    /// bcd.cfg's minutes as the rows show them: "" for none, 0 or something that is not a number (BackgroundRun reads those as off).
+    private static func minutes(_ raw: String?) -> String {
+        guard let raw, let m = Double(raw), m > 0 else { return "" }
+        return m == m.rounded() ? String(Int(m)) : raw
     }
 
     func choices(_ key: BCDMemoryKey) -> [String] {
@@ -158,10 +174,36 @@ private enum BCDLiveKey {
         read()
     }
 
+    /// madeira-bcd: bcd.cfg's sched-hints, read when a game starts, so it never asks for a restart.
+    @Published private(set) var schedHints = BCDSchedHints.mode(MadeiraConfig.get(BCDSchedHints.key)).rawValue
+    func setSchedHints(_ value: String) {
+        MadeiraConfig.set(BCDSchedHints.key, value.isEmpty ? nil : value)
+        schedHints = BCDSchedHints.mode(value).rawValue
+        LogStore.shared.log("[runtime-settings] sched-hints=\(value.isEmpty ? "off" : value)")
+    }
     func setEco(_ on: Bool) {
         MadeiraConfig.set(BCDLiveKey.eco, on ? "1" : nil)
         LogStore.shared.log("[runtime-settings] eco=\(on ? 1 : 0)")
         restartNeeded = true
+        read()
+    }
+
+    /// In the background (BackgroundRun.swift): BackgroundRun reads these keys each time BCD is left, so no restart. The default, off, is no line.
+    func setBackgroundGame(_ minutes: String) {
+        MadeiraConfig.set(BCDLiveKey.backgroundRun, Self.minutes(minutes).isEmpty ? nil : Self.minutes(minutes))
+        LogStore.shared.log("[runtime-settings] background-run=\(Self.minutes(minutes).isEmpty ? "off" : Self.minutes(minutes))")
+        read()
+    }
+
+    func setBackgroundDownload(_ minutes: String) {
+        MadeiraConfig.set(BCDLiveKey.backgroundDownload, Self.minutes(minutes).isEmpty ? nil : Self.minutes(minutes))
+        LogStore.shared.log("[runtime-settings] background-download=\(Self.minutes(minutes).isEmpty ? "off" : Self.minutes(minutes))")
+        read()
+    }
+
+    func setBackgroundSound(_ on: Bool) {
+        MadeiraConfig.set(BCDLiveKey.backgroundSound, on ? "1" : nil)
+        LogStore.shared.log("[runtime-settings] background-sound=\(on ? 1 : 0)")
         read()
     }
 
@@ -170,9 +212,12 @@ private enum BCDLiveKey {
         guard !extensionTestRunning else { return }
         // madeira-bcd (round 630; Discord agent D S10: 15 of 15 "no extension" logs since 10-31 are LiveContainer installs): inside
         // LiveContainer the helper extension is not registered with iOS, so the test can only fail; say why instead.
-        if getenv("LC_HOME_PATH") != nil {
-            extensionTestLine = "Not available inside LiveContainer: the helper extension is there only when BCD is installed as its own app."
-            LogStore.shared.log("[memhost] test skipped: LiveContainer (lc=1), the helper extension is not registered there")
+        // Follow-up of the night round 2026-11-11: with LiveContainer's Helper Process Support ready (JITBuiltInHost.swift) the test runs
+        // there too; the test is the player's own tap, so it needs no key.
+        if getenv("LC_HOME_PATH") != nil, LiveContainerHelper.state != .ready {
+            extensionTestLine = "Inside LiveContainer the helper extension starts only through LiveContainer's Helper Process Support. "
+                + "Settings › JIT says what is missing."
+            LogStore.shared.log("[memhost] test skipped: LiveContainer (lc=1), helper process support \(LiveContainerHelper.state.rawValue)")
             return
         }
         extensionTestRunning = true
@@ -198,6 +243,7 @@ private enum BCDLiveKey {
     @Published private(set) var frameCap: Int?
     @Published private(set) var holdMaximumRate = false
     @Published private(set) var metalFX = ""
+    @Published private(set) var presentFX = false
     @Published private(set) var direct3D9 = ""
     @Published private(set) var orientation = ""
     @Published private(set) var hudEveryGame = BCDHUDState.everyGame == .off ? "" : BCDHUDState.everyGame.rawValue
@@ -219,6 +265,7 @@ private enum BCDLiveKey {
             return BCDResolution(width: choice.w, height: choice.h, shape: shape)
         }
         read()
+        _ = losslessWatch
     }
 
     private func read() {
@@ -230,6 +277,7 @@ private enum BCDLiveKey {
         frameCap = Int(values[BCDLiveKey.frameCap] ?? "").flatMap { (10...120).contains($0) ? $0 : nil }
         holdMaximumRate = ProMotionIntent.holdMaximum
         metalFX = values[BCDLiveKey.metalFX] ?? ""
+        presentFX = values[BCDLiveKey.presentFX] == "1"
         direct3D9 = values[BCDLiveKey.direct3D9] ?? ""
         orientation = BCDOrientationChoice(setting: values[BCDLiveKey.orientation]).setting ?? ""
     }
@@ -243,6 +291,31 @@ private enum BCDLiveKey {
     func setResolution(_ value: String) { write(BCDLiveKey.desktopSize, value) }
     func setFrameCap(_ fps: Int?) { write(BCDLiveKey.frameCap, fps.map(String.init)) }
     func setMetalFX(_ value: String) { write(BCDLiveKey.metalFX, value) }
+    func setPresentFX(_ on: Bool) { write(BCDLiveKey.presentFX, on ? "1" : nil) }
+
+    // madeira-bcd: Lossless Scaling's setup (BCDLosslessLive.swift); the page follows its changes.
+    var lossless: BCDLossless.Setup { BCDLosslessLive.shared.setup }
+    func losslessCheck() { Task { await BCDLosslessLive.shared.verify() } }
+    func losslessDownload() { Task { await BCDLosslessLive.shared.download() } }
+    func losslessRemove() { BCDLosslessLive.shared.remove() }
+    private lazy var losslessWatch = BCDLosslessLive.shared.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+
+    // madeira-bcd: the device test of Apple frame interpolation (BCDVTInterpLive.swift). No game may run meanwhile.
+    @Published private(set) var vtProbe = BCDVTInterp.Probe()
+    var vtProbeBlocked: String? {
+        guard #available(iOS 26.0, *) else { return BCDVTInterp.Probe.needsIOS26 }
+        return wine_process_is_running() != 0 || LibraryModel.shared.current != nil ? BCDVTInterp.Probe.whileGameRuns : nil
+    }
+    func vtProbeRun() {
+        guard !vtProbe.running, vtProbeBlocked == nil else { return }
+        vtProbe = BCDVTInterp.Probe(running: true, text: "")
+        LogStore.shared.log(BCDVTInterp.Probe.logPrefix + "started from Settings")
+        BCDVTInterpLive.probe { [weak self] text in
+            let lines = text.split(separator: "\n").map(String.init)
+            for line in lines { LogStore.shared.log(BCDVTInterp.Probe.logPrefix + line) }
+            self?.vtProbe = BCDVTInterp.Probe(running: false, text: lines.isEmpty ? "The test wrote nothing." : lines.joined(separator: "\n"))
+        }
+    }
     func setDirect3D9(_ value: String) { write(BCDLiveKey.direct3D9, value) }
     /// Only a word BCDOrientationChoice knows is written, and "off" is the key removed (it is what no key means).
     func setOrientation(_ value: String) { write(BCDLiveKey.orientation, BCDOrientationChoice(setting: value).setting) }
@@ -471,56 +544,113 @@ struct BCDTouchEditorHost: View {
 // MARK: - Storage
 
 @MainActor final class BCDStorageLive: BCDStorageBackend {
-    // External SSD (thebcd69/bcd-games#12 by Pardoxum; ExternalGameStorage in StorageModel.swift). Nothing here touches
-    // the disk until the player taps one of its buttons; the folder work runs off the main thread.
+    // External drives (ExternalDrives.swift, from Madeira #464). Nothing here touches the disk on the main thread until the player
+    // taps one of its rows; the rows wait for a running game and a move, and removing a drive also for downloads, cloud syncs and
+    // Workshop jobs (ExternalDrives.remove).
     let supportsExternalGames = true
-    @Published private(set) var externalGamesMessage: String? = ExternalGameStorage.shared.message
-    @Published private(set) var externalGamesFree: Int64?
+    @Published private(set) var externalGamesMessage: String?
     @Published private var externalGamesBusy = false
     private var pickerOpenedAt: Date?
     private var pickerAnswered = false
 
-    var externalGamesSavedFolder: String? { ExternalGameStorage.shared.savedFolderName }
+    var externalDrives: [BCDExternalDrive] {
+        let drives = ExternalDrives.shared
+        return drives.folders.map { folder in
+            let connected = drives.mounted[folder.id] != nil   // opened this run; no disk read on the main thread
+            return BCDExternalDrive(id: folder.id.uuidString, letter: folder.letter.uppercased(), name: folder.name, connected: connected,
+                                    free: connected ? externalSpace[folder.id]?.free ?? nil : nil,
+                                    total: connected ? externalSpace[folder.id]?.total ?? nil : nil)
+        }
+    }
+    /// The drives' free and total room, measured off the main thread by refresh().
+    @Published private var externalSpace: [UUID: (free: Int64?, total: Int64?)] = [:]
+
+    var steamInstallDrive: String { ExternalDrives.shared.steamInstallFolder?.id.uuidString ?? "" }
     var prefixToolsView: AnyView? { AnyView(BCDPrefixToolsGroup(backend: BCDPrefixToolsLive.shared)) }   // round 604: BCDGameSetup/BCDPrefixToolsLive.swift
 
-    var canConnectExternalGames: Bool {
-        !externalGamesBusy && wine_process_is_running() == 0 && LibraryModel.shared.current == nil && !savesBusy && !addingGames && !model.busy
+    var canChangeExternalDrives: Bool {
+        // A download, a cloud sync or a Workshop job only keeps a drive from being removed (ExternalDrives.remove says so).
+        !externalGamesBusy && wine_process_is_running() == 0 && LibraryModel.shared.current == nil && GameMover.shared.moving == nil
+            && !savesBusy && !addingGames && !model.busy
     }
 
-    func connectExternalGames(_ url: URL) {
+    func addExternalDrive(_ url: URL) {
         guard beginExternalWork() else { return }
-        DispatchQueue.global(qos: .userInitiated).async {
-            let result = Swift.Result { try ExternalGameStorage.shared.connect(url) }
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                externalGamesBusy = false
-                switch result {
-                case .success: externalGamesMessage = ExternalGameStorage.shared.message
-                case .failure(let error):
-                    externalGamesMessage = error.localizedDescription
-                    LogStore.shared.log("[ext-storage] folder refused: \((error as NSError).domain) \((error as NSError).code)")
-                }
-                refresh()
+        let result = Swift.Result { try ExternalDrives.shared.add(url) }
+        externalGamesBusy = false
+        switch result {
+        case .success(let added):
+            externalGamesMessage = added.reopened ? "\(added.folder.name) is connected." : nil
+            SteamGamesModel.shared.refresh()
+            // Madeira offers the games already on a drive it adds; BCD adds them at once (Find games).
+            if !added.reopened { findGames(onDrive: added.folder.id.uuidString) }
+        case .failure(let error):
+            externalGamesMessage = error.localizedDescription
+            LogStore.shared.log("[external] folder refused: \((error as NSError).domain) \((error as NSError).code)")
+        }
+        refresh()
+    }
+
+    func reconnectExternalDrive(_ id: String, chooseAgain: @escaping () -> Void) {
+        guard let folder = folder(id), beginExternalWork() else { return }
+        ExternalDrives.shared.mountAll()
+        externalGamesBusy = false
+        if ExternalDrives.shared.mounted[folder.id] != nil {
+            externalGamesMessage = "\(folder.name) is connected."
+            SteamGamesModel.shared.refresh()
+        } else {
+            // iOS no longer opens the saved folder: the picker, to choose it again (ExternalDrives.add opens the same registration).
+            externalGamesMessage = "Choose \(folder.name) again in Files: the same folder, or the whole drive if you added the whole drive."
+            chooseAgain()
+        }
+        refresh()
+    }
+
+    func findGames(onDrive id: String) {
+        guard let folder = folder(id), beginExternalWork() else { return }
+        Task { [weak self] in
+            let added = await ExternalDrives.shared.addGames(on: folder)
+            self?.externalGamesBusy = false
+            self?.externalGamesMessage = added == 0 ? "No new games were found on \(folder.name). Steam games there are in your library already."
+                : "\(added) \(added == 1 ? "game" : "games") from \(folder.name) added to your library."
+        }
+    }
+
+    /// madeira-bcd (Porthole port, item 6): how fast the drive is as BCD uses it. About 70 MB are written and read in a folder of
+    /// their own, off the main thread; the result is the drives' message and a line in the log.
+    func testSpeed(ofDrive id: String) {
+        guard let folder = folder(id), let root = ExternalDrives.shared.mounted[folder.id], beginExternalWork() else { return }
+        externalGamesMessage = "Testing \(folder.name)…"
+        Task { [weak self] in
+            let result = await Task.detached(priority: .utility) { Result { try BCDDriveSpeedTest.run(in: root) } }.value
+            self?.externalGamesBusy = false
+            switch result {
+            case .success(let speed):
+                LogStore.shared.log("[drive] speed test of \(folder.name): \(speed.summary)")
+                self?.externalGamesMessage = "\(folder.name): \(speed.summary)."
+                    + (BCDDriveWriteMode.mode(forWriteMBps: speed.writeMBps) == .gentle ? " This is a slow drive: a download to it takes long." : "")
+            case .failure(let error):
+                LogStore.shared.log("[drive] speed test of \(folder.name) failed: \(error.localizedDescription)")
+                self?.externalGamesMessage = "The speed test of \(folder.name) did not finish: \(error.localizedDescription)"
             }
         }
     }
 
-    func reconnectExternalGames(chooseAgain: @escaping () -> Void) {
-        guard beginExternalWork() else { return }
-        DispatchQueue.global(qos: .userInitiated).async {
-            let outcome = ExternalGameStorage.shared.reconnect()
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                externalGamesBusy = false
-                externalGamesMessage = ExternalGameStorage.shared.message
-                refresh()
-                // The saved bookmark did not open (or none is saved): the picker, with the message above in the row.
-                switch outcome {
-                case .chooseAgain, .noSavedFolder: chooseAgain()
-                case .connected, .refused: break
-                }
-            }
-        }
+    func removeExternalDrive(_ id: String) {
+        guard let folder = folder(id), canChangeExternalDrives else { return }
+        ExternalDrives.shared.remove(folder.id)
+        externalGamesMessage = ExternalDrives.shared.folders.contains { $0.id == folder.id }
+            ? "\(folder.name) was kept: a download, a cloud sync or a Workshop item is using storage. Try again when it has finished." : nil
+        refresh()
+    }
+
+    func setSteamInstallDrive(_ id: String) {
+        ExternalDrives.shared.setSteamInstalls(id.isEmpty ? nil : UUID(uuidString: id))
+        objectWillChange.send()
+    }
+
+    private func folder(_ id: String) -> ExternalFolder? {
+        ExternalDrives.shared.folders.first { $0.id.uuidString == id }
     }
 
     func noteExternalPicker(_ what: String) {
@@ -546,8 +676,8 @@ struct BCDTouchEditorHost: View {
     }
 
     private func beginExternalWork() -> Bool {
-        guard canConnectExternalGames else {
-            externalGamesMessage = "Quit the game and wait for storage tasks to finish before connecting a folder."
+        guard canChangeExternalDrives else {
+            externalGamesMessage = "Quit the game and wait for a move to finish before changing drives."
             return false
         }
         externalGamesBusy = true
@@ -566,6 +696,8 @@ struct BCDTouchEditorHost: View {
 
     init() {
         model.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &bag)
+        ExternalDrives.shared.objectWillChange.receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &bag)
     }
 
     var items: [BCDStorageItem] {
@@ -580,10 +712,12 @@ struct BCDTouchEditorHost: View {
 
     func refresh() {
         model.refresh()
-        if ExternalGameStorage.shared.isConnected {
+        let open = ExternalDrives.shared.folders.compactMap { folder in ExternalDrives.shared.mounted[folder.id].map { (folder.id, $0) } }
+        if !open.isEmpty {
             DispatchQueue.global(qos: .utility).async {
-                let free = ExternalGameStorage.shared.freeBytes
-                DispatchQueue.main.async { [weak self] in self?.externalGamesFree = free }
+                var space: [UUID: (free: Int64?, total: Int64?)] = [:]
+                for (id, root) in open { space[id] = (root.freeSpace, root.volumeTotal) }
+                DispatchQueue.main.async { [weak self] in self?.externalSpace = space }
             }
         }
         let keys: Set<URLResourceKey> = [.volumeAvailableCapacityForImportantUsageKey, .volumeTotalCapacityKey]
@@ -914,6 +1048,28 @@ struct BCDLiveSwitch {
         LogStore.shared.log("[bcd-settings] the performance trace = \(on ? "on" : "off")")
         configTick += 1
     }
+
+    // madeira-bcd (Porthole port, item 10): Ask before trying a fix (AutoTuneAsk.swift).
+    var asksBeforeFix: Bool {
+        _ = configTick
+        return UserDefaults.standard.bool(forKey: AutoTuneAsk.key)
+    }
+    func setAsksBeforeFix(_ on: Bool) {
+        UserDefaults.standard.set(on, forKey: AutoTuneAsk.key)
+        LogStore.shared.log("[bcd-settings] ask before trying a fix = \(on ? "on" : "off")")
+        configTick += 1
+    }
+
+    // madeira-bcd (Porthole port, item 11): Make big logs smaller before sending (BCDLogThin.swift).
+    var thinsLogs: Bool {
+        _ = configTick
+        return UserDefaults.standard.bool(forKey: BCDLogThinner.switchKey)
+    }
+    func setThinsLogs(_ on: Bool) {
+        UserDefaults.standard.set(on, forKey: BCDLogThinner.switchKey)
+        LogStore.shared.log("[bcd-settings] make big logs smaller = \(on ? "on" : "off")")
+        configTick += 1
+    }
 }
 
 // MARK: - Feedback
@@ -1160,6 +1316,13 @@ struct BCDLiveSwitch {
         "MIT-fmt.txt": "fmt · MIT license",
         "MIT-libxml2.txt": "libxml2 · MIT license",
         "MIT-libxslt.txt": "libxslt · MIT license",
+        // OpenGL (build 632): the licenses build/mesa-ios, build/moltenvk-ios and build/luajit-x64 copy into the bundle.
+        "MIT-Mesa.txt": "Mesa · MIT license", "Mesa-license.rst": "Mesa · the licenses of its parts",
+        "MoltenVK-Apache-2.0.txt": "MoltenVK · Apache 2.0 license", "SPIRV-Cross-Apache-2.0.txt": "SPIRV-Cross · Apache 2.0 license",
+        "SPIRV-Tools-Apache-2.0.txt": "SPIRV-Tools · Apache 2.0 license", "cereal-BSD-3-Clause.txt": "cereal · BSD 3-clause license",
+        "LuaJIT-MIT.txt": "LuaJIT · MIT license",
+        // KosmicKrisp (build 660): Mesa's Vulkan on Metal 4 (build/mesa-ios/build-kosmickrisp-bcd.sh copies the second into the bundle with the library).
+        "MIT-Mesa-KosmicKrisp.txt": "Mesa KosmicKrisp · MIT license", "KosmicKrisp-Mesa-license.rst": "Mesa KosmicKrisp · the licenses of its parts",
     ]
 }
 

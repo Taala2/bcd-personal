@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright 2026 thebcd69 (BCD)
 // BCD Material: additional terms under GPL-3.0 section 7 apply; see LICENSE-BCD.md.
+// Portions copyright 2026 creeper4004: colour profiles and Settings > Appearance, from thebcd69/bcd-games pull request #27; GPL-3.0-only, modified for BCD in November 2026. See THIRD-PARTY-NOTICES.md.
 
 import SwiftUI
 import UIKit
@@ -28,6 +29,18 @@ import UIKit
     /// the control's frame; `changed` reports the thumb's deflection (x right, y down, within
     /// the unit circle) and whether the control is held.
     func padSurface(control: UUID, name: String, changed: @escaping (CGSize, Bool) -> Void) -> AnyView
+    /// madeira-bcd (Porthole port, item 9): the same for a floating stick. The surface fills the stick's zone; `diameter` is the stick's,
+    /// and `landed` says where its ring is drawn while a thumb is on it (from the zone's centre; nil at rest).
+    func floatingPadSurface(control: UUID, name: String, diameter: CGFloat, changed: @escaping (CGSize, Bool) -> Void,
+                            landed: @escaping (CGSize?) -> Void) -> AnyView
+}
+
+extension BCDTouchInput {
+    /// A stand-in without the engine (the preview): the stick's own surface over the zone.
+    func floatingPadSurface(control: UUID, name: String, diameter: CGFloat, changed: @escaping (CGSize, Bool) -> Void,
+                            landed: @escaping (CGSize?) -> Void) -> AnyView {
+        padSurface(control: control, name: name, changed: changed)
+    }
 }
 
 /// The editor's hands on the layout.
@@ -41,11 +54,11 @@ import UIKit
 /// BCD's palette for drawing over a game: the night-violet ground, kept see-through, with the
 /// logo's violet-to-fuchsia light for a pressed control.
 enum BCDTouchPalette {
-    static let fill = BCDStyle.ground
+    static var fill: Color { BCDStyle.ground }
     /// The player's colour for the rims and labels (BCDTouchFeel.tint, set from the in-game menu), else BCD's own.
     static var rim: Color { BCDTouchFeel.tint.map { Color(red: $0.r, green: $0.g, blue: $0.b) } ?? BCDStyle.lavender }
     static var label: Color { BCDTouchFeel.tint.map { Color(red: $0.r, green: $0.g, blue: $0.b) } ?? BCDStyle.text }
-    static let selected = BCDStyle.fuchsia
+    static var selected: Color { BCDStyle.fuchsia }
     static func pressed(_ opacity: Double) -> LinearGradient {
         LinearGradient(colors: [BCDStyle.violet.opacity(0.92 * opacity), BCDStyle.fuchsia.opacity(0.92 * opacity)],
                        startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -78,6 +91,8 @@ struct BCDTouchLayer: View {
     var arranging: BCDTouchArranging? = nil
     /// How the controls look (round 604, BCDTouchLook.swift); BCD's own unless the player chose another.
     var look = BCDTouchLook()
+    /// madeira-bcd (Porthole port, item 9): floating sticks (BCDTouchFeel.floatingSticks, the in-game menu's touch settings; off by default).
+    var floatingSticks = false
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -87,11 +102,24 @@ struct BCDTouchLayer: View {
                     .contentShape(Rectangle())
                     .onTapGesture { arranging.select(nil) }
             }
-            ForEach(items) { item in
-                BCDTouchControl(item: item, screen: screen, layoutScale: layoutScale, opacity: opacity,
-                                editing: editing, selected: editing && selected == item.id,
-                                input: input, arranging: arranging, look: look)
-                    .equatable()
+            if floatingSticks && !editing {
+                // The controller sticks first, under every other control: a control in a stick's zone keeps its own touches.
+                ForEach(items.filter(\.action.isControllerStick)) { item in
+                    BCDTouchFloatingStick(item: item, screen: screen, layoutScale: layoutScale, opacity: opacity, input: input, look: look)
+                        .equatable()
+                }
+                ForEach(items.filter { !$0.action.isControllerStick }) { item in
+                    BCDTouchControl(item: item, screen: screen, layoutScale: layoutScale, opacity: opacity,
+                                    editing: editing, selected: false, input: input, arranging: arranging, look: look)
+                        .equatable()
+                }
+            } else {
+                ForEach(items) { item in
+                    BCDTouchControl(item: item, screen: screen, layoutScale: layoutScale, opacity: opacity,
+                                    editing: editing, selected: editing && selected == item.id,
+                                    input: input, arranging: arranging, look: look)
+                        .equatable()
+                }
             }
         }
         .frame(width: screen.width, height: screen.height, alignment: .topLeading)
@@ -175,6 +203,60 @@ struct BCDTouchControl: View, Equatable {
                                y: BCDTouchGeometry.clampPlace(Double(base.y) + Double(value.translation.height / screen.height)))
             }
             .onEnded { _ in dragBase = nil }
+    }
+}
+
+/// madeira-bcd (Porthole port, item 9): a controller stick that floats. Its surface covers the stick's zone (BCDFloatingStick.zone), under
+/// every other control; its ring is drawn at its place and, while a thumb is on it, where the thumb landed. Only while the sticks float and
+/// nothing is being edited (BCDTouchLayer).
+struct BCDTouchFloatingStick: View, Equatable {
+    let item: BCDTouchItem
+    let screen: CGSize
+    let layoutScale: Double
+    let opacity: Double
+    let input: BCDTouchInput
+    let look: BCDTouchLook
+
+    @State private var down = false
+    @State private var vector = CGSize.zero
+    @State private var landed: CGSize?
+
+    nonisolated static func == (a: BCDTouchFloatingStick, b: BCDTouchFloatingStick) -> Bool {
+        // The input is the layer's one object for the session (BCDTouchLive.shared), so it is not compared.
+        a.item == b.item && a.screen == b.screen && a.layoutScale == b.layoutScale && a.opacity == b.opacity && a.look == b.look
+    }
+
+    private var diameter: CGFloat { CGFloat(BCDTouchGeometry.diameter(scale: item.scale, layoutScale: layoutScale)) }
+
+    var body: some View {
+        let size = BCDTouchGeometry.size(item.shape, diameter: Double(diameter))
+        let home = CGPoint(x: CGFloat(item.x) * screen.width, y: CGFloat(item.y) * screen.height)
+        let zone = BCDFloatingStick.zone(of: CGRect(x: home.x - size.width / 2, y: home.y - size.height / 2, width: size.width, height: size.height))
+        ZStack(alignment: .topLeading) {
+            if let name = item.action.padName {
+                input.floatingPadSurface(control: item.id, name: name, diameter: diameter, changed: { deflection, held in
+                    vector = deflection
+                    down = held
+                }, landed: { landed = $0 })
+                .frame(width: zone.width, height: zone.height)
+                .position(x: zone.midX, y: zone.midY)
+            }
+            BCDTouchFace(action: item.action, diameter: diameter, down: down, vector: vector, opacity: opacity)
+                .environment(\.bcdTouchLook, look)
+                .frame(width: size.width, height: size.height)
+                .position(x: home.x + (landed?.width ?? 0), y: home.y + (landed?.height ?? 0))
+                .allowsHitTesting(false)
+        }
+        .onChange(of: screen) { _, _ in rest() }
+        .onDisappear { rest() }
+        .accessibilityElement()
+        .accessibilityLabel(BCDTouchNames.title(item.action))
+    }
+
+    private func rest() {
+        down = false
+        vector = .zero
+        landed = nil
     }
 }
 

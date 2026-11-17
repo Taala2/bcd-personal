@@ -1,3 +1,8 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later
+ * Copyright 2026 Taala2
+ * Taken from thebcd69/bcd-games pull request #33 by Taala2 (2026-10-30, "Add TLS cross-process diagnostics"), with its host check.
+ * Modified by BCD (thebcd69), 2026-11-11: the [nw-tls] report runs only with MADEIRA_TLS_DIAG=1 (default off).
+ */
 /* [nw-tls]: the TLS state of a thread that takes a NULL-page access violation in a process with nw.dll loaded (Internship [demo], NW.js).
  *
  * Question it answers: is the TLS index nw.dll's Slot::Get uses (the variable at RVA 0x82C6F7C) equal to 5, and was the faulting

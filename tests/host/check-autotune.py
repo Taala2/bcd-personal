@@ -41,6 +41,7 @@ Behaviour (swiftc; --require-swift makes its absence a failure):
 --bless writes NAME.expect from the current result (review it before committing).
 """
 import argparse
+import concurrent.futures
 import importlib.util
 import json
 import os
@@ -81,6 +82,9 @@ HOOKS = {
     # whole of BCD's settings code names auto-tune nowhere else).
     "BCDSettingsLive.swift": [
         "private let tune = BCDLiveSwitch(read: { AutoTune.preferred }, write: { AutoTune.preferred = $0 }, running: AutoTune.enabled)   // madeira-bcd: auto-tune's switch in BCD's Settings, on by default",
+        # Porthole port, item 10: Settings › Logs › After a crash › Ask before trying a fix (off by default), a UserDefaults bool.
+        "return UserDefaults.standard.bool(forKey: AutoTuneAsk.key)",
+        "UserDefaults.standard.set(on, forKey: AutoTuneAsk.key)",
     ],
     # BCD's interface (BCDLiveStore.swift, 2026-10-18): a tuned game's badge, read only while auto-tune is on.
     "BCDLiveStore.swift": [
@@ -88,6 +92,10 @@ HOOKS = {
     ],
     "LibraryBCD.swift": [
         "if AutoTune.enabled { AutoTune.exportLayer(for: entry) }",
+        # BCDGameRekey (build 635): a game whose path changes (a move to or from an external drive) keeps its Auto-tune state file
+        # and switch; files and keys are moved, nothing of Auto-tune runs.
+        "(AutoTune.stateURL(old), AutoTune.stateURL(new))] {",
+        'for key in [AutoTune.gamesKey, "madeira.recommended.applied", "bcd.saves.lastSession"] {',
     ],
     "Library.swift": [
         "if AutoTune.enabled { AutoTune.sessionBegan(entry, remember: remember, dockWithoutEntry: dock != nil && !remember) }",
@@ -103,6 +111,8 @@ HOOKS = {
         # One modifier: ContentView's chain of alerts is at the type checker's limit (build of
         # 2026-10-16: "unable to type-check this expression in reasonable time").
         ".modifier(AutoTuneAlert())   // madeira-bcd: auto-tune's result (AutoTuneViews.swift); never shown while it is off",
+        # Round 660 (M140, owner 2026-11-15): Play waits (off the main thread, at most 5 s) for the verdict of an unclean earlier session.
+        "if AutoTune.holdPlayForVerdict(entry, spinner: spinner, then: { launchLibraryEntry(entry) }) { return }",
     ],
     # BCD's game page (BCDGamePage.swift): the game's switch, where its search stands, what it
     # tried, its report, keeping the found lines and Undo, each only while Settings › Auto-tune
@@ -115,6 +125,13 @@ HOOKS = {
         "let kept = AutoTune.enabled ? AutoTune.state(path).kept : []",
         "if AutoTune.enabled { AutoTune.reset(path) }",
         "guard let state = AutoTune.enabled ? AutoTune.state(path) : nil else { return nil }",
+        # Porthole port, item 10 (AutoTuneAsk.swift): "Ask before trying a fix": the fix that waits for the player's yes on the page,
+        # the page's Try the suggested fix, and Undo forgets the answers too. Read only while Settings › Auto-tune is on.
+        "let waiting = tuned.on ? AutoTuneAsk.waiting(state, path) : []",
+        "if !waiting.isEmpty { status = AutoTuneAsk.pageStatus(waiting) }",
+        "AutoTuneAsk.forget(path)   // madeira-bcd (Porthole port, item 10): the player's answers go with the lines",
+        "guard let path = entry(for: game)?.windowsPath, AutoTune.enabled else { return }",
+        "AutoTuneAsk.approve(AutoTune.state(path), path)",
     ],
 }
 for swift in sorted(APP.glob("*.swift")):
@@ -168,8 +185,10 @@ check("BCDPresentation.didClose looks again a moment after a close, only when so
 hooks = {"BCDGamePage.swift": ["content.fullScreenCover(item: $game, onDismiss: BCDPresentation.didClose)"],
          "BCDFrontEnd.swift": ["onDismiss: { installButtons(); BCDPresentation.didClose() }"],
          "BCDLiveFrontEnd.swift": [".fullScreenCover(isPresented: $onboarding.presented, onDismiss: BCDPresentation.didClose)",
-                                   ".sheet(item: sheetShown, onDismiss: BCDPresentation.didClose)",
-                                   ".fullScreenCover(item: pageShown, onDismiss: BCDPresentation.didClose)"]}
+                                   ".sheet(item: sheetShown, onDismiss: appSheetClosed)",
+                                   ".fullScreenCover(item: pageShown, onDismiss: appSheetClosed)",
+                                   # Pull request #43: the sheet's close also asks for a pending system prompt.
+                                   "private func appSheetClosed() {\n        appSheetPresented = false\n        BCDPresentation.didClose()"]}
 for name, wants in hooks.items():
     text = (APP / name).read_text()
     check(f"{name}: its pages and sheets call BCDPresentation.didClose when they close", all(w in text for w in wants))
@@ -257,7 +276,7 @@ NOT_FROM_LAYER = {"metalfx-upscale", "fps-limit", "env.MADEIRA_PAD_MODE", "pool"
 LINE = re.compile(r"^([A-Za-z0-9._-]+) = (\S.*)$")
 FIELDS = {"id", "lines", "priority", "all", "any", "none", "outcomes", "session", "api", "ramMinMB", "ramMaxMB",
           "minStage", "maxStage", "imageMaxMB", "exeMaxMB", "exeMinMB", "memoryMinPct", "upgrade", "listUpgrade", "listUpgradeFailure", "noRetry", "reason",
-          "evidence", "fixedIn", "noFix", "evaluateWhenRan", "ranOnly", "swapCapHit"}
+          "evidence", "fixedIn", "noFix", "evaluateWhenRan", "ranOnly", "swapCapHit", "partialUserKeys", "bcCensusMinPct", "lead"}
 ids = [r["id"] for r in rules]
 check("rule ids are unique", len(ids) == len(set(ids)))
 for r in rules:
@@ -286,9 +305,16 @@ for r in rules:
         bad.append("swapCapHit is true when present")
     if r.get("exeMinMB") is not None and r.get("exeMaxMB") is not None and r["exeMinMB"] > r["exeMaxMB"]:
         bad.append("exeMinMB above exeMaxMB")
-    for k in ("memoryMinPct",):
+    for k in ("memoryMinPct", "bcCensusMinPct"):
         if r.get(k) is not None and not (isinstance(r[k], int) and 1 <= r[k] <= 100):
             bad.append("%s is a percentage" % k)
+    if "partialUserKeys" in r and (r["partialUserKeys"] is not True or not any(l.startswith("swap-mb = ") for l in r.get("lines", []))
+                                   or len(r["lines"]) < 2):
+        # Night round 2026-11-11 (agent T3 S1): the rule may run without the player's own swap-mb, so it names swap-mb and more lines.
+        bad.append("partialUserKeys is true and only on a rule with swap-mb and other lines")
+    if "lead" in r and (not isinstance(r["lead"], str) or not r["lead"].strip() or not (r.get("noFix") or r.get("fixedIn"))):
+        # Night round 2026-11-11 (agent G10 S4): the words that start a known stop's advice; only a noFix or fixedIn rule has one.
+        bad.append("lead is a non-empty string and only on a noFix or fixedIn rule")
     for line in r.get("lines", []):
         m = LINE.match(line)
         if not m:
@@ -359,6 +385,13 @@ def build(tmp, name, sources):
 
 
 KEYS = ("outcome", "stage", "matched", "dialogs", "status", "next")
+
+
+def uk(exp):
+    """Night round 2026-11-11 (agent T3 S1): the keys the player had set when the fixture's session ended (the .expect's "userKeys")."""
+    return ["--user-keys", ",".join(exp["userKeys"])] if exp.get("userKeys") else []
+
+
 with tempfile.TemporaryDirectory(prefix="madeira-autotune-") as tmp:
     replay = build(tmp, "replay", [CORE, RULES_SWIFT, R / "tests/host/autotune_replay.swift"])
     if replay:
@@ -366,18 +399,30 @@ with tempfile.TemporaryDirectory(prefix="madeira-autotune-") as tmp:
             for name in args.bless:
                 exp_path = FIX / (name + ".expect")
                 prior = json.loads(exp_path.read_text()) if exp_path.exists() else {"end": {}, "note": ""}
-                out = json.loads(subprocess.run([str(replay), "--end", json.dumps(prior["end"]), str(FIX / (name + ".log"))],
+                out = json.loads(subprocess.run([str(replay), "--end", json.dumps(prior["end"])] + uk(prior) + [str(FIX / (name + ".log"))],
                                                 capture_output=True, text=True).stdout)
                 prior.update({k: out[k] for k in KEYS})
                 exp_path.write_text(json.dumps(prior, indent=1, sort_keys=True, ensure_ascii=False) + "\n")
                 print(f"blessed {name}: {out['outcome']}, stage {out['stage']}, matched {out['matched']}, next {out['next']}")
-        for p in logs:
+        def replay_fixture(p):
+            """The fixture's replays: three chunk sizes, and a normal end for a killed session that crashed (checked below)."""
             exp = json.loads((FIX / (p.stem + ".expect")).read_text())
             runs = {}
             for chunk in (0, 4093, 7):
-                r = subprocess.run([str(replay), "--chunk", str(chunk), "--end", json.dumps(exp["end"]), str(p)],
+                r = subprocess.run([str(replay), "--chunk", str(chunk), "--end", json.dumps(exp["end"])] + uk(exp) + [str(p)],
                                    capture_output=True, text=True)
                 runs[chunk] = json.loads(r.stdout) if r.returncode == 0 else {"error": r.stderr}
+            alt = None
+            if exp.get("end", {}).get("killed") and exp["outcome"] in ("crashed", "exited-early") and exp["matched"]:
+                r = subprocess.run([str(replay), "--end", "{}"] + uk(exp) + [str(p)], capture_output=True, text=True)
+                alt = json.loads(r.stdout)
+            return exp, runs, alt
+
+        # Build 663 (owner 2026-11-15, faster builds): the replays run AUTOTUNE_JOBS at a time (default 4), each its own process;
+        # the checks below read them in the fixtures' order, so the output is the serial run's.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, int(os.environ.get("AUTOTUNE_JOBS", "4")))) as pool:
+            replayed = list(pool.map(replay_fixture, logs))
+        for p, (exp, runs, alt) in zip(logs, replayed):
             got = runs[0]
             same = all(runs[c].get(k) == got.get(k) for c in (4093, 7) for k in KEYS + ("facts", "monoMissing"))
             diff = {k: (exp.get(k), got.get(k)) for k in KEYS if exp.get(k) != got.get(k)}
@@ -388,17 +433,17 @@ with tempfile.TemporaryDirectory(prefix="madeira-autotune-") as tmp:
                   not diff and same, "expected/got: %s; chunk sizes agree: %s" % (diff, same))
             # A crash read from the log alone (the app never came back) reads the same when the
             # session ended normally. A memory kill or a hang exists only on the first path.
-            if exp.get("end", {}).get("killed") and exp["outcome"] in ("crashed", "exited-early") and exp["matched"]:
-                r = subprocess.run([str(replay), "--end", "{}", str(p)], capture_output=True, text=True)
-                alt = json.loads(r.stdout)
+            if alt is not None:
                 check(f"{p.stem}: a normal end gives the same rules ({alt['outcome']})",
                       alt["outcome"] in ("crashed", "hung", "exited-early") and alt["matched"] == exp["matched"])
     engine = build(tmp, "engine", [CORE, RULES_SWIFT, R / "tests/host/autotune_engine_checks.swift"])
     if engine:
         r = subprocess.run([str(engine)], capture_output=True, text=True)
         check("the engine checks pass", r.returncode == 0, "\n".join(l for l in r.stdout.splitlines() if not l.startswith("ok"))[-3000:])
+    # Porthole port, item 10: the glue calls AutoTuneAsk (AutoTuneAsk.swift), which with its switch absent returns auto-tune's own values.
     glue_exe = build(tmp, "madeira-autotune-glue-check",
-                     [GLUE, CORE, RULES_SWIFT, R / "tests/host/autotune_glue_stubs.swift", R / "tests/host/autotune_glue_checks.swift"])
+                     [GLUE, CORE, RULES_SWIFT, APP / "AutoTuneAsk.swift", R / "tests/host/autotune_glue_stubs.swift",
+                      R / "tests/host/autotune_glue_checks.swift"])
     if glue_exe:
         for mode in ("off", "on", "default"):
             t = Path(tmp) / mode

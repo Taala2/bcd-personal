@@ -19,6 +19,50 @@ Steam sign-in, owned library and downloads (SwiftSteam): derived from
 Jfishin's Madeira Steam client and used with his permission; GPL-3.0-or-later
 with the exception, (C) 2026 Jfishin, 125hz.
 
+Epic Cloud saves (app/Madeira/BCDEpic/EpicFormats.swift and EpicCloudSaves.swift):
+upstream Madeira's files, GPL-3.0-or-later with the exception; EpicFormats.swift is
+(C) 2026 Akshay CM. EpicCloudSaves.swift is a port of parts of Legendary
+(https://github.com/derrod/legendary, GPL-3.0-or-later: api/egs.py, core.py,
+utils/savegame_helper.py, models/chunk.py, models/manifest.py, utils/rolling_hash.py).
+The rest of BCD's Epic code is BCD's own, written from protocol facts.
+
+GOG install script and redistributables (app/Madeira/BCDGOG/GOGInstallScript.swift
+and GOGSetup.swift): upstream Madeira's files, GPL-3.0-or-later with the
+exception, (C) 2026 Madeira contributors, which follow Playport's GOGInstallScript
+and GOGDependencies (https://github.com/playportdev/playport at 412de5f,
+GPL-3.0-or-later; legal/PLAYPORT.txt). The rest of BCD's GOG code is BCD's own,
+written from GOG's public replies; the protocol work follows Heroic's gogdl
+(GPL-3.0) and no gogdl code is included.
+
+itch.io store (SwiftItch) and the experimental EA store (SwiftEA): taken from
+Madeira (v0.2.0); GPL-3.0-or-later with the exception, (C) 2026 ft7t8drgwf-wq
+and the Madeira contributors (SwiftEA/EARegistry.swift: 125hz). The itch.io
+calls follow go-itchio (MIT) and the EA protocol work follows Maxima (GPL-3.0)
+as knowledge only: no go-itchio and no Maxima code is included. The .7z reader
+(itch_7z.c) is written from 7-Zip's published format description and uses the
+iOS SDK's zlib and liblzma, linked dynamically.
+
+Code from Madeira after BCD's fork (https://github.com/willfaust/Madeira, forked at its commit 279fd0f of
+2026-10-15): 16,769 lines in 161 files of BCD are identical to code that 23 people wrote for Madeira, taken
+between 2026-09-29 and 2026-11-05. It is Madeira's code: GPL-3.0-or-later with the exception (its lines in the Wine unix side:
+LGPL-2.1-or-later), (C) 2026 its authors,
+who are named in the headers of the files that hold it, in the "Code from Madeira after BCD's fork" section of
+THIRD-PARTY-NOTICES.md (with a table of every file, source and author) and in the README. BCD's additional terms
+(LICENSE-BCD) do not apply to that code. Authors, by lines: ft7t8drgwf-wq (insertfloppy), 125hz, Connor Gow, Ash
+Hopkins, llamajose, Tabîrcă Nicolae-Eduard, alantangok, Will Faust, Akshay CM, wamei, meshoklv, spitefulowl,
+Jelly-RayTian, SirDank, Ixion, intraducine, domainus, NevesHenry, Tomba247, byKAYRA, JMRBDev, Kesavamoorthi G and
+Nikita Kiselov. The commits that BCD's forks of Wine, FEX-Emu and DXMT took from Madeira's forks are listed in each fork's
+LICENSE-MADEIRA.md.
+
+Code from Porthole (https://github.com/tylerkaska112/Porthole, another fork of Madeira; its commit 99ec315 of
+2026-11-12), taken in November 2026: GPL-3.0-or-later with the exception, (C) 2026 The Porthole authors. The files
+that hold it name it in their headers, and the "Code from Porthole" section of THIRD-PARTY-NOTICES.md lists every
+one of them with what was taken. BCD's additional terms (LICENSE-BCD) do not apply to that code. The order and the
+inputs and outputs of its Lossless Scaling frame generation passes follow lsfg-vk 1.0.0
+(https://github.com/PancakeTAS/lsfg-vk, tag v1.0.0), MIT, Copyright (c) 2025 lsfg-vk (legal/LICENSES/MIT-lsfg-vk.txt).
+No file, shader or other part of Lossless Scaling itself is in BCD: a person who owns it lets BCD read it from
+their own Steam copy on their own device.
+
 BCD Dock (Madeira Dock; arm64ec-windows/dockhost.exe, when built):
 GPL-3.0-or-later with the exception, (C) 2026 125hz. Source:
 https://github.com/125hz/madeira-dock (the madeira-dock submodule). Its licence
@@ -57,7 +101,7 @@ Statically linked into the application binary:
   BSD-3-Clause selected from its BSD / GPL-2.0 dual licence (ZSTD-BSD.txt).
 - liblzma: public domain / 0BSD, the iOS SDK's system library, linked
   dynamically; nothing is bundled.
-- FFmpeg 7.1.1 (libavformat, libavcodec, libavutil, libswresample):
+- FFmpeg 7.1.5 (libavformat, libavcodec, libavutil, libswresample):
   LGPL-2.1-or-later (LGPL-2.1.txt), configured without any GPL, version3 or
   non-free component. Source tarball (the unmodified upstream release from
   ffmpeg.org) and its SHA-256: build/ffmpeg/src, built by build/ffmpeg/build.sh.
@@ -70,6 +114,29 @@ Separate Windows DLLs built from unmodified third-party source (opt-in per game;
   Vandevenne; legal/LICENSES/zlib-lodepng.txt) and DetourEnumerateModules from Microsoft Detours (MIT, (c) Microsoft
   Corporation; legal/LICENSES/MIT-Detours.txt).
 
+A separate Windows DLL built from third-party source with one patch (opt-in per game; nothing runs without it):
+- DirectX Shader Compiler 1.9.2609 (https://github.com/microsoft/DirectXShaderCompiler), University of Illinois/NCSA licence,
+  (C) 2003-2015 University of Illinois at Urbana-Champaign and (C) Microsoft Corporation, with miniz (MIT) and the other parts its
+  licence lists (legal/LICENSES/DirectXShaderCompiler-LICENSE.txt, DirectXShaderCompiler-ThirdPartyNotices.txt):
+  arm64ec-windows/dxcompiler-optin.dll, an x86-64 Windows DLL built from the tag v1.9.2609 with Raed Rizqie's MinGW-w64 port
+  (DXC pull request #8265, adapted by BCD: build/dxc-win), offered under the project's licence. Used only by a game whose file
+  says env.MADEIRA_OPTIN_DLLS = dxcompiler.
+
+Separate libraries for BCD's OpenGL (opt-in per game: a game whose gl-backend setting is zink or gles; nothing runs without it):
+- Mesa 25.0.7 (https://mesa3d.org; OSMesa, Zink and softpipe), MIT and other permissive licences (legal/LICENSES/MIT-Mesa.txt,
+  Mesa-license.rst): gl/libOSMesa.dylib, built from the unmodified release with BCD's patches
+  (build/mesa-ios/patches, offered under MIT).
+- MoltenVK 1.4.2 (Khronos Group; The Brenwill Workshop Ltd), Apache-2.0 (MoltenVK-Apache-2.0.txt): gl/libMoltenVK.dylib, unmodified.
+  It contains SPIRV-Cross and SPIRV-Tools (Apache-2.0: SPIRV-Cross-Apache-2.0.txt, SPIRV-Tools-Apache-2.0.txt) and cereal
+  (BSD-3-Clause: cereal-BSD-3-Clause.txt).
+- Mesa KosmicKrisp (https://mesa3d.org; Mesa's Vulkan on Metal 4 by LunarG and Google, at Mesa commit b39d173c), MIT and other
+  permissive licences (legal/LICENSES/MIT-Mesa-KosmicKrisp.txt, KosmicKrisp-Mesa-license.rst): gl/libvulkan_kosmickrisp.dylib, when this build has it, built from that source with the
+  Playport authors' patches (build/mesa-ios/playport-patches, offered under MIT). Used only by a game whose vulkan setting is
+  kosmickrisp (iOS 26 or later).
+- LuaJIT 2.1 (Mike Pall), MIT (LuaJIT-MIT.txt): compat/love/lua51.dll, an x86-64 Windows DLL built from the unmodified source
+  (build/luajit-x64/build.sh), loaded in place of a LOVE game's lua51.dll when that is an x64 LuaJIT needing memory below 2 GB;
+  the game's file is not modified.
+
 Separate Windows programs built from unmodified third-party source (started from the Start menu; nothing of them is linked into BCD):
 - 7-Zip 26.05 (https://www.7-zip.org/, https://github.com/ip7z/7zip), (C) 1999-2026 Igor Pavlov: arm64ec-windows/7zFM.exe (the File
   Manager) and 7z.exe (the command-line program). GNU LGPL-2.1-or-later (LGPL-2.1.txt); the LZFSE and Zstandard decoders are BSD
@@ -78,12 +145,17 @@ Separate Windows programs built from unmodified third-party source (started from
   supported. Source (the unmodified release) and its SHA-256: third-party/7zip, built by tools/build-7zip.py. Statically linked
   with llvm-mingw's runtime (LLVM-Apache-2.0-with-exception.txt; legal/LICENSES/MinGW-w64-runtime.txt).
 
-Bundled data file (not part of the source repository; the build downloads it, checks its SHA-256 and does not change it):
+Bundled data files (not part of the source repository; the build downloads them, checks their SHA-256 and does not change them):
 - TimGM6mb.sf2 (soundfont/), the General MIDI sound bank games' MIDI music is played with by Apple's synthesizer:
   GNU General Public License, version 2 (legal/LICENSES/GPL-2.0.txt), Copyright 2004 Tim Brechbill, 2010 David
   Bolton; some samples are the author's own, the others public domain or under the GPL. It is a data file beside
   BCD, not linked into it, and stays under its own licence. The file is its own source. Notice:
   soundfont/NOTICE-TimGM6mb.txt. SHA-256 c5378b62028c920cb11e4803327983fee2f2cdff5dc89c708e39da417e51c854.
+- NotoSansJP-Regular.otf (fonts-ja/), Noto Sans JP, the font a game with the Japanese locale gets: SIL Open Font
+  License 1.1 (fonts-ja/LICENSE-NotoSansJP-OFL-1.1.txt, legal/LICENSES/OFL-1.1-NotoSansJP.txt), Copyright 2014-2021
+  Adobe; "Noto is a trademark of Google Inc." It is a data file beside BCD, not linked into it, and stays under its
+  own licence. Notice: fonts-ja/NOTICE-NotoSansJP.txt. SHA-256
+  dff723ba59d57d136764a04b9b2d03205544f7cd785a711442d6d2d085ac5073.
 
 Inside Wine's Windows modules, unmodified, from Wine's libs/ (licence files
 as Wine ships them in legal/LICENSES/wine-libs/): capstone (3-clause

@@ -89,7 +89,21 @@ enum GameLibrary {
         // madeira-bcd personal: Ren'Py's interpreter under lib\py3-windows-x86_64 was picked as the card's program over
         // the game's own (SleeveShock, The Grand Butt Sex Hotel, build 627: python.exe with no script, exit 0, no window)
         "python.exe", "pythonw.exe",
+        // Night round 2026-11-11 (G3 S11; DOOM 3: BFG Edition DVXP0H, RATRZ0): the Qt language chooser that runs before the game.
+        "language_setup.exe", "languagesetup.exe",
     ]
+
+    /// Round 660 (M126; Send Log HSQDK4): a GOG offline installer beside the game's files, setup_<name>_<version>.exe
+    /// (setup_medal_of_honor_2.0.0.21.exe), is never the game; the folder scan listed it as one. The player runs it once
+    /// (Add a game) and then adds the game's own program. Only that exact shape: the version after the last "_" is digits and dots.
+    static func isGOGInstallerName(_ lower: String) -> Bool {
+        guard lower.hasPrefix("setup_"), lower.hasSuffix(".exe") else { return false }
+        let stem = lower.dropFirst(6).dropLast(4)
+        guard let cut = stem.lastIndex(of: "_") else { return false }
+        let version = stem[stem.index(after: cut)...]
+        guard !stem[..<cut].isEmpty, let first = version.first, first.isASCII, first.isNumber else { return false }
+        return version.allSatisfy { ($0.isASCII && $0.isNumber) || $0 == "." }
+    }
 
     static var driveC: URL? {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?
@@ -108,28 +122,23 @@ enum GameLibrary {
 
         func walk(_ dir: URL, depth: Int, title: String?) {
             guard depth <= maxDepth else { return }
-            // The SSD folder (C:\External and below, while it is connected) is listed by path, so the entries stay under
-            // drive_c: the URL listing does not follow the link and returns the resolved path below it (ExternalGameStorage).
-            guard let entries = ExternalGameStorage.shared.linkedChildren(of: dir) ?? (try? fm.contentsOfDirectory(
+            guard let entries = try? fm.contentsOfDirectory(
                 at: dir,
                 includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey],
                 options: [.skipsHiddenFiles]
-            )) else { return }
+            ) else { return }
 
             for entry in entries {
-                // C:\External is a link to the SSD folder the player chose in Settings > Storage. It is followed
-                // only while that folder is connected (ExternalGameStorage), and its children are the titles;
-                // every other link is left as it always was.
-                let externalMount = depth == 0 && entry.lastPathComponent == "External" && ExternalGameStorage.shared.admits(entry)
-                let values = try? (externalMount ? entry.resolvingSymlinksInPath() : entry).resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey])
+                let values = try? entry.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey])
                 if values?.isDirectory == true {
                     let lower = entry.lastPathComponent.lowercased()
                     if depth == 0 && skippedRoots.contains(lower) { continue }
                     if skippedAnywhere.contains(lower) { continue }
                     // The first directory below drive_c (or below Program Files) names the title.
-                    walk(entry, depth: depth + 1, title: externalMount ? nil : title ?? titleFor(entry))
+                    walk(entry, depth: depth + 1, title: title ?? titleFor(entry))
                 } else if entry.pathExtension.lowercased() == "exe" {
                     if noiseNames.contains(entry.lastPathComponent.lowercased()) { continue }
+                    if isGOGInstallerName(entry.lastPathComponent.lowercased()) { continue }
                     guard let windows = windowsPath(for: entry, root: root) else { continue }
                     found.append(GuestExecutable(
                         windowsPath: windows,

@@ -1,3 +1,8 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later
+ * Copyright 2026 Taala2
+ * Taken from thebcd69/bcd-games pull request #33 by Taala2 (2026-10-30, "Add TLS cross-process diagnostics"), with its host check.
+ * Modified by BCD (thebcd69), 2026-11-11: MADEIRA_TLS_DIAG (default off) added; the helpers are otherwise as received.
+ */
 /* TLS-vs-AV diagnostics, shared helpers (read-only; nothing here writes to any TEB, PEB or image).
  *
  * Used by ios_tls_clear.h ([tls-cross-clear], in virtual_ios.c) and ios_nw_tls_diag.h ([nw-tls], in signal_arm64_ios.c).
@@ -10,12 +15,16 @@
  *   - ios_tls_diag_peb_bit(): the allocation bit of a TLS index in a PEB's TlsBitmapBits / TlsExpansionBitmapBits.
  *   - ios_tls_diag_find_module(): walks PEB->LdrData->InLoadOrderModuleList (x64 layout; same offsets as the ml689 module map
  *     in signal_arm64_ios.c) for an ASCII module name; at most 512 entries, every read checked.
+ *   - ios_tls_diag_enabled(): the switch MADEIRA_TLS_DIAG. Everything these reports add (the seq/t/alloc-bit fields of [tls-cross-clear],
+ *     [TLS_CLEAR_DONE], [nw-tls], the module walks) runs only with the switch on; off, the [tls-cross-clear] line is the one of build 579
+ *     to 651 and nothing else is read or printed.
  */
 #ifndef IOS_TLS_DIAG_UTIL_H
 #define IOS_TLS_DIAG_UTIL_H
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -24,6 +33,22 @@
 #define IOS_TLSD_MAX_MODULES 512
 
 extern unsigned long long ios_tls_diag_seq_counter;
+
+/* MADEIRA_TLS_DIAG: 1 (exactly) adds the cross-process TLS diagnostics to the log: [tls-cross-clear] with a sequence number, a monotonic time and
+ * the allocation bit of the index in both PEBs, a [TLS_CLEAR_DONE] line that reads the cell back after TlsFree's store, and, for a process
+ * with the analysed NW.js build (nw.dll, SizeOfImage 0x89B7000), an [nw-tls] report for a NULL-page access violation in the function the
+ * failure was seen in. Log lines only: no cell, no TEB, no PEB and no image is written. Default off; read once per session. */
+static inline int ios_tls_diag_enabled( void )
+{
+    static int mode = -1;
+
+    if (mode < 0)
+    {
+        const char *e = getenv( "MADEIRA_TLS_DIAG" );
+        mode = e && e[0] == '1' && !e[1];
+    }
+    return mode;
+}
 
 static inline unsigned long long ios_tls_diag_seq( void )
 {

@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright 2026 thebcd69 (BCD)
 # BCD Material: additional terms under GPL-3.0 section 7 apply; see LICENSE-BCD.md.
+# Portions copyright 2026 Paulo Eduardo Correa (pauloec): the native iPhone Duo interface (Liquid Glass, system tabs, controller navigation, Windows desktop on Home), from thebcd69/bcd-games pull request #43; GPL-3.0-only, modified for BCD in November 2026. See THIRD-PARTY-NOTICES.md.
+# Portions copyright 2026 creeper4004: colour profiles and Settings > Appearance, from thebcd69/bcd-games pull request #27; GPL-3.0-only, modified for BCD in November 2026. See THIRD-PARTY-NOTICES.md.
 """Build BCD's interface for the simulator and photograph it on many device sizes.
 
 The preview app is the app's BCD*.swift interface files (the ones that never touch the
@@ -90,6 +92,22 @@ ENGINE_BOUND |= {"BCDTurboLive.swift", "BCDInputLive.swift", "BCDPlayersLive.swi
 # the touch feel model and the magnifier's bar are plain Swift and build here; everything that reads or drives the engine stays out.
 ENGINE_BOUND |= {"BCDMenuMore.swift", "BCDSessionFeelLive.swift", "BCDMagnifierLive.swift", "BCDWindowsLive.swift",
                  "BCDDebugLive.swift", "BCDPauseLive.swift"}
+# Live frame generation (Porthole port, item 2): the status words and the menu's rows are plain values (BCDFrameGen.swift); the engine calls stay out.
+ENGINE_BOUND |= {"BCDFrameGenLive.swift"}
+# Live upscaling (Porthole port, item 4): the route, the "to the screen" factor and the menu's rows are plain values (BCDPresentFX.swift).
+ENGINE_BOUND |= {"BCDPresentFXLive.swift"}
+# Lossless Scaling frame generation (Porthole port, item 1): the licence rules, the shader reader and the menu's rows are plain values
+# (BCDLossless.swift); Steam, the Keychain and the files stay out.
+ENGINE_BOUND |= {"BCDLosslessLive.swift"}
+# Apple frame interpolation, an experiment (Porthole port, item 3): the line, the start rule, the status words and the menu's rows are plain
+# values (BCDVTInterp.swift); the engine calls and the device test stay out.
+ENGINE_BOUND |= {"BCDVTInterpLive.swift"}
+# Scheduler hints, an experiment (Porthole port, item 5): the key, the clamp rule and the words are plain values (BCDSchedHints.swift);
+# iOS, the kernel helpers (BCDSchedHints.m) and the timer stay out.
+ENGINE_BOUND |= {"BCDSchedHintsLive.swift"}
+# A game that never asks for a controller, an experiment (Porthole port, item 8): the two rules and the words are plain values
+# (BCDPadAuto.swift); the engine's read count, the controller and the timer stay out.
+ENGINE_BOUND |= {"BCDPadAutoLive.swift"}
 
 # PC launchers (Battle.net, EA app: BCDLaunchers.swift, BCDLauncherView.swift): their engine side stays out; the screens are
 # -BCDTab library -BCDSection launcher-battlenet[+installed|downloading|failed|starting] (app/BCDPreview/BCDLauncherSample.swift).
@@ -167,7 +185,7 @@ def _build(out):
     arch = "arm64" if os.uname().machine == "arm64" else "x86_64"
     sources = sorted(p for p in APP.glob("BCD*.swift") if p.name not in ENGINE_BOUND) + sorted(PREVIEW.glob("*.swift"))
     run(["xcrun", "swiftc", "-target", f"{arch}-apple-ios18.0-simulator", "-sdk", sdk, "-parse-as-library",
-         "-module-name", "BCDPreview", "-Onone", "-o", str(app / "BCDPreview")] + [str(s) for s in sources])
+         "-module-name", "BCDPreview", "-Onone", "-D", "BCD_PREVIEW", "-o", str(app / "BCDPreview")] + [str(s) for s in sources])
     assets = out / "Assets.xcassets"
     shutil.rmtree(assets, ignore_errors=True)
     assets.mkdir()
@@ -195,6 +213,7 @@ def _build(out):
     if partial.exists():
         info.update(plistlib.loads(partial.read_bytes()))
     (app / "Info.plist").write_bytes(plistlib.dumps(info))
+    shutil.copy2(APP / "BCDThemes.json", app / "BCDThemes.json")
     fetch_art()
     for folder in sorted(ART_CACHE.glob("*")):
         if not folder.is_dir():
@@ -250,6 +269,7 @@ def _build_key():
         add(str(path.relative_to(ROOT)), path.read_bytes())
     for name in ("BCDLogo.imageset", "AppIcon.appiconset"):
         add(name, _tree_digest(APP / "Assets.xcassets" / name))
+    add("BCDThemes.json", (APP / "BCDThemes.json").read_bytes())
     # Store pictures are resources of the signed preview, not compiler inputs.
     for path in sorted(ART_CACHE.glob("*/*")):
         if path.name in ART_FILES and path.is_file():
@@ -312,7 +332,7 @@ def build(out, *, use_cache=True):
         return target
 
 
-def shoot(app, device, udid, screens, orients, focus_all, empty, out, press=None, stage=None, scene_width=None):
+def shoot(app, device, udid, screens, orients, focus_all, empty, out, press=None, stage=None, scene_width=None, duo=False):
     shots = []
     subprocess.run(["xcrun", "simctl", "boot", udid], capture_output=True)
     run(["xcrun", "simctl", "bootstatus", udid, "-b"])
@@ -342,6 +362,8 @@ def shoot(app, device, udid, screens, orients, focus_all, empty, out, press=None
                 args += ["-BCDStage", stage]
             if scene_width:
                 args += ["-BCDSceneWidth", str(scene_width)]
+            if duo:
+                args += ["-BCDDuo", "1"]   # the native iPhone Duo interface (BCDDuoFeatures.active in the preview build); no simulator is a foldable iPhone
             subprocess.run(["xcrun", "simctl", "terminate", udid, BUNDLE_ID], capture_output=True)
             log = out / f".launch-{udid}.txt"
             log.unlink(missing_ok=True)
@@ -362,7 +384,7 @@ def shoot(app, device, udid, screens, orients, focus_all, empty, out, press=None
             time.sleep(3 + (1.6 + 0.4 * len(press.split(",")) if press else 0))
             first = False
             name = (f"{device.replace(' ', '_').replace('(', '').replace(')', '')}--{screen}{'--ring-' + ring if ring else ''}"
-                    f"{'--' + press.replace(',', '-') if press else ''}{'--stage-' + stage.replace(':', '-').replace(',', '-') if stage else ''}{'--scene-width-' + str(scene_width).replace(':', '-') if scene_width else ''}--{orient}.png")
+                    f"{'--' + press.replace(',', '-') if press else ''}{'--stage-' + stage.replace(':', '-').replace(',', '-') if stage else ''}{'--scene-width-' + str(scene_width).replace(':', '-') if scene_width else ''}{'--duo' if duo else ''}--{orient}.png")
             run(["xcrun", "simctl", "io", udid, "screenshot", str(out / name)])
             subprocess.run(["xcrun", "simctl", "terminate", udid, BUNDLE_ID], capture_output=True)
             try:
@@ -401,6 +423,7 @@ def main():
     ap.add_argument("--stage", help="WxH[:regular|compact,regular|compact]: the interface in a window of that many points, centred on an iPad "
                                    "(the foldable iPhone's inner display is 890x626:regular,regular; --devices \"iPad Pro 13-inch (M4)\")")
     ap.add_argument("--scene-width", help="points: tell the foldable support's size-class follower the window is that wide (the iPad then reads as compact)")
+    ap.add_argument("--duo", action="store_true", help="the native iPhone Duo interface (Liquid Glass, system tabs): the preview build has no foldable model to gate it, so this stands in for it")
     ap.add_argument("--empty", action="store_true")
     ap.add_argument("--out", type=Path, default=Path("/tmp/bcd-ui-preview"))
     ap.add_argument("--build-only", action="store_true")
@@ -430,7 +453,7 @@ def main():
         udid, version, _ = sims[device]
         print(f"{device} (iOS {version})")
         shoot(app, device, udid, [s.strip() for s in a.screens.split(",")], [o.strip() for o in a.orient.split(",")],
-              a.focus, a.empty, a.out, a.press, a.stage, a.scene_width)
+              a.focus, a.empty, a.out, a.press, a.stage, a.scene_width, duo=a.duo)
     print(f"ui-preview: screenshots in {a.out}")
 
 

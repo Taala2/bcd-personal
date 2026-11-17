@@ -240,6 +240,27 @@
   - `docs/local-build/BUILD-NUMBER`.
 - Найдено попутно и исправлено локально: список отката FEX в `build-xtajit64.sh` не содержал `LookupCache.cpp`, поэтому проверка l1-reclaim в CI читала бы уже пропатченный файл. Файл добавлен в список, тест это проверяет.
 
+## 5g. Upstream BCD 0.1.653, 0.1.659, 0.1.665 (2026-11-11…15, разбор без слияния, 2026-11-17)
+
+- Теги: `v0.1.653` (c3c2d15), `v0.1.659` (aa1f315), `v0.1.665` (41e972b, последний). Пин FEX 049a1b1 → c2c6997 (только в 0.1.665: точные 64-битные целые x87, по включению), пин Wine 52a6004 → c605989.
+- Касается наших игр:
+  - **0.1.653:** `env.MADEIRA_TLS_CLEAR_OWN_PROCESS` теперь включён по умолчанию у апстрима (у нас — personal-default). NW.js: CrossCode (64-бит) — Wine `dxva2`; Fear & Hunger 2 — без аппаратного декодирования видео. Ren'Py 7 без OpenGL (FreshWomen, Everlasting Summer) — `gl-backend = zink` по правилу «тихого выхода». Unity/Mono: проверка MZ view по умолчанию (зависания из-за кода за .NET-сборкой).
+  - **0.1.659:** генерация кадров (Lossless Scaling, MetalFX), `benchmark-line = 1` (строка итогов сеанса: FPS, минимум свободной памяти, пики swap и JIT) — полезно для наших замеров.
+  - **0.1.665:** `GetTickCount` в 64-битных программах без исключений (`env.MADEIRA_USD_DIRECT = 0` — старый путь); вызовы между библиотеками в дочерних процессах без исключений (`env.MADEIRA_AUX_IAT_HEAL_CHILD`); «безопасный режим» снятия блокировок для всех игр (исправляет зависания после чужого освобождения блокировки); Vulkan для 32-битных.
+- **TLS-диагностика:** апстрим взял её из нашего PR #33 (`ios_nw_tls_diag.h`, `ios_tls_diag_util.h`, правки `ios_tls_clear.h`) и изменил: отчёт `[nw-tls]` только при `MADEIRA_TLS_DIAG=1` (по умолчанию выключен), +25 строк в util, +32/−7 в tls_clear. У нас эти файлы под запретом на изменение (HANDOFF): слияние меняет их логику — решение за владельцем.
+- **Наши оверлеи FEX на пине c2c6997:** callret-noscrub, renderer-tso, l1-reclaim, protect-diff накладываются (exit 0); файлы, которые они правят, между пинами не менялись. Восемь новых апстримных оверлеев FEX (split-lock, notify-nocpuarea, process-term, threadterm-clear-area, allocwatch-clear, pool-alloc-null, repne-bit-ops, callret-lean) вместе с нашими накладываются в любом порядке; callret-small после наших — тоже.
+- **Пробное слияние** (`git merge-tree HEAD v0.1.665`): 14 файлов с конфликтами.
+  - Обе стороны дописали в одно место («оставить оба»): `build-ipa.yml` (шаги проверок), `project.pbxproj`, `ConfigCatalog.generated.swift`, `ContentView.swift`, `GameLibrary.swift`, `WineProcessBridge.m` (наши personal-default и `unsetenv` рядом с апстримными `bcd_japanese_session_env` и `unsetenv`), `process_ios.c` (наш `[wasm-tierup]` рядом с апстримным UBI_CEF), `signal_arm64_ios.c`, `virtual_ios.c`, `build-xtajit64.sh`.
+  - Требуют решения: три файла TLS-диагностики и `tests/host/check-tls-clear-process.py`.
+  - Наш personal-default `MADEIRA_TLS_CLEAR_OWN_PROCESS` после слияния будет лишним (апстрим включает его сам); вреда нет.
+- Не проверено: сборка и IPA после слияния (только CI), устройство.
+- **Слияние v0.1.665 (2026-11-17, по решению владельца «Take upstream's TLS»):**
+  - TLS-диагностика — версия апстрима: `ios_nw_tls_diag.h`, `ios_tls_diag_util.h`, `ios_tls_clear.h`, `check-tls-clear-process.py`, и в `signal_arm64_ios.c` вызовы под `ios_tls_diag_enabled()`. Отчёт `[nw-tls]` теперь только при `env.MADEIRA_TLS_DIAG = 1`.
+  - «Оставить оба»: `build-ipa.yml`, pbxproj, каталог, ContentView, GameLibrary, WineProcessBridge (personal-default, `unsetenv`), `process_ios.c` (`renderer_wasm_cmdline` и `ubi_cef_cmdline`), `signal_arm64_ios.c` (`ios_mach_emulate_ldaddal64` и `ios_mach_swp_lse2`), `virtual_ios.c` (`ios_wasm_guard_trim` перед `ios_oversize_reserve`).
+  - Обход релокаций — апстрим (`ios_reloc_dir_ok`/`block_ok`/`entry_ok`, `ios_reloc_walk.h`); наш пропуск отдельной записи `[reloc-bounds]` убран: `ios_reloc_entry_ok` ловит ту же запись (и останавливает обход), а апстримная `check-reloc-walk.py` требует его участок байт в байт. Наша внешняя проверка таблицы (lucieneslife) и её строка лога остались.
+  - `build-xtajit64.sh`: список отката FEX апстрима плюс наш `LookupCache.cpp` (его правит l1-reclaim).
+  - Локально: сборка xtajit64 на пине c2c6997 со всеми оверлеями — PASS (167 с). Проверки: `check-reloc-walk`, `check-tls-clear-process`, `check-tls-diag-util`, `check-renderer-wasm-tierup`, `check-args-append`, `check-personal-recommendations`, `check-wasm-guard-trim`, `check-fex-arena-reap` (WSL) — PASS. Не прошли из-за среды: `check-fex-split-lock` (в WSL Unicorn читает неотображённое +0x38; в Windows нет `aligned_alloc`), `check-fex-callret-small` (GCC в WSL: `extern … = 0` под `-Werror`; CI собирает clang) — их проверит CI.
+
 ## 5f. Upstream BCD 0.1.634 (вышел 2026-11-06, разбор без слияния, 2026-11-07)
 
 - Тег `v0.1.634` (e378a60), один коммит после 0.1.630, 467 файлов (+93 тыс. строк, большая часть — логи-фикстуры автонастройки). Пин FEX d4f2e6e → 049a1b1 (9 коммитов), пин Wine 469e08a → 52a6004.

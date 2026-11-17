@@ -1,3 +1,5 @@
+// Portions copyright 2026 125hz: code taken from https://github.com/willfaust/Madeira (pull request #246)
+// under GPL-3.0-or-later and modified for BCD in October 2026. See THIRD-PARTY-NOTICES.md.
 import SwiftUI
 import UIKit
 import QuartzCore
@@ -92,6 +94,9 @@ final class ProMotionIntent {
 
     /// The intent that belongs to a given pacing mode (0 = none). See the type comment.
     static func maxHz(for mode: Int32) -> Int {
+        if BCDFrameGenLive.holdsPanel { return panelMaxFPS }   // madeira-bcd: live frame generation shows two pictures per game frame (false without env.MADEIRA_PRESENT_FX)
+        if BCDLosslessLive.holdsPanel { return panelMaxFPS }   // madeira-bcd: Lossless Scaling adds frames in this session (false without the game's lossless-scaling line)
+        if BCDVTInterpLive.holdsPanel { return panelMaxFPS }   // madeira-bcd: Apple frame interpolation adds frames in this session (false without the game's vt-interpolation line)
         if mode == 3 { return holdMaximum ? min(60, panelMaxFPS) : 0 }   // 30 cap
         if mode == 1 { return holdMaximum ? panelMaxFPS : 0 }            // 60 cap
         return panelMaxFPS                                                // MAX, RAW, 40 cap

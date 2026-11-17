@@ -1,4 +1,6 @@
 #!/bin/bash
+# Portions copyright 2026 125hz: code taken from https://github.com/willfaust/Madeira (pull request #353)
+# under GPL-3.0-or-later and modified for BCD in November 2026. See THIRD-PARTY-NOTICES.md.
 # Build Wine's win32u unix side as a static lib for iOS (aarch64).
 # Mirrors build/ntdll-unix/build.sh — compiles unpatched upstream .c files
 # with iOS clang, per-file overrides go in this dir.
@@ -112,6 +114,14 @@ for src in $WINE_SRC/dlls/win32u/*.c $WINE_SRC/dlls/win32u/dibdrv/*.c; do
             compile_one "$BUILD_DIR/d3dkmt_ios.c" "d3dkmt"
             continue
             ;;
+        vulkan)
+            # madeira-bcd (Windows Vulkan, docs/BUILDING.md 6c): wraps upstream vulkan.c. The Vulkan library is opened from
+            # $MADEIRA_VULKAN_LIBRARY (WineProcessBridge.m sets it only for a game whose file has vulkan = moltenvk; unset =
+            # Vulkan off, as before) and the winios Vulkan surface driver (VK_KHR_win32_surface on VK_EXT_metal_surface) is
+            # added (vulkan_surface_ios.c, included by vulkan_ios.c; see the header comment there).
+            compile_one "$BUILD_DIR/vulkan_ios.c" "vulkan"
+            continue
+            ;;
         syscall)
             # Wraps upstream syscall.c and adds win32u_zero_bits(), the
             # allocation ceiling of the calling pseudo-process (see the
@@ -136,6 +146,10 @@ for src in $WINE_SRC/dlls/win32u/*.c $WINE_SRC/dlls/win32u/dibdrv/*.c; do
 
     compile_one "$src" "$name"
 done
+
+# madeira-bcd: the winios OpenGL driver (WGL over Mesa/Zink on MoltenVK, or Apple's OpenGL ES; the app half is
+# app/Madeira/Winios/WiniosGL.m). Installed by driver_ios.c only for a session with gl-backend = zink or gles.
+compile_one "$BUILD_DIR/opengl_ios.c" "opengl_ios"
 
 echo ""
 echo "Results: $SUCCEEDED succeeded, $FAILED failed"

@@ -5,11 +5,14 @@
  ],
  "end": {},
  "matched": [
-  "opengl-only-no-context"
+  "opengl-only-no-context",
+  "dock-game-exit3-session-open"
  ],
- "next": [],
+ "next": [
+  "gl-backend = zink"
+ ],
  "note": "Send Log 0CBF7Q, build 600: GL-absent stub followed by SDL No matching GL pixel format available. Recognize the missing backend without speculative config changes; not a game compatibility fix.",
  "outcome": "crashed",
  "stage": 3,
- "status": "known"
+ "status": "trying"
 }

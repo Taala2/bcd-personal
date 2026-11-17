@@ -58,6 +58,11 @@ def needles():
             keep = max(6, (sig.get("count") or 1) + 5)
             first = sig["has"][0]
             out[first] = max(out.get(first, 0), keep)
+            # Round 631: a signal of several parts also keeps the lines that have all of them, which thinning by the first part
+            # alone could drop ("[nt-fail] #" is on hundreds of lines; the one with the V8 table's size and type is in the middle).
+            if len(sig["has"]) > 1:
+                whole = tuple(sig["has"])
+                out[whole] = max(out.get(whole, 0), keep)
     return out
 
 
@@ -128,6 +133,11 @@ ERROR_WORDS = ("error", "Error", "ERROR", "could not", "Could not", "Could Not",
                "not supported", "unable", "Unable", "cannot", "Cannot", "Fatal", "fatal")
 
 
+def _has_all(line, parts):
+    """Every part on one line, in any order, as the scanner reads a signal (AutoTuneCore.swift hasAll)."""
+    return all(part in line for part in parts)
+
+
 def cut(log, wanted):
     hits = {n: [] for n in wanted}
     keep = set()
@@ -135,7 +145,7 @@ def cut(log, wanted):
         for i, raw in enumerate(f):
             line = raw.decode("utf-8", "replace").rstrip("\r\n")
             for n in wanted:
-                if n in line:
+                if (n in line) if isinstance(n, str) else _has_all(line, n):
                     hits[n].append(i)
             if "[win-name] #" in line and ' text="' in line and any(w in line for w in ERROR_WORDS) and len(keep) < 4000:
                 keep.add(i)
@@ -151,7 +161,7 @@ def cut(log, wanted):
     return lines
 
 
-def replay(paths, end):
+def replay(paths, end, user_keys=""):
     swiftc = shutil.which("swiftc")
     if not swiftc:
         sys.exit("autotune-fixture: swiftc is needed to check the cut")
@@ -161,7 +171,8 @@ def replay(paths, end):
                             str(CORE), str(RULES_SWIFT), str(REPLAY)], capture_output=True, text=True)
         if b.returncode:
             sys.exit(b.stderr[-3000:])
-        r = subprocess.run([exe, "--end", json.dumps(end)] + [str(p) for p in paths], capture_output=True, text=True)
+        r = subprocess.run([exe, "--end", json.dumps(end)] + (["--user-keys", user_keys] if user_keys else []) + [str(p) for p in paths],
+                           capture_output=True, text=True)
         if r.returncode:
             sys.exit(r.stderr[-3000:])
         return [json.loads(l) for l in r.stdout.splitlines() if l.strip()]
@@ -176,19 +187,23 @@ def main():
     ap.add_argument("name")
     ap.add_argument("--end", default="{}", help='AutoTuneSessionEnd fields, e.g. {"killed": true}')
     ap.add_argument("--note", default="")
+    # Night round 2026-11-11 (agent T3 S1): keys the player set (swap-mb in bcd.cfg); the .expect records them as "userKeys".
+    ap.add_argument("--user-keys", default="", help="comma-separated keys the player set, which auto-tune never proposes")
     a = ap.parse_args()
     end = json.loads(a.end)
     OUT.mkdir(parents=True, exist_ok=True)
     fixture = OUT / (a.name + ".log")
     lines = cut(a.log, needles())
     fixture.write_text("\n".join(lines) + "\n")
-    full, cutr = replay([a.log, fixture], end)
+    full, cutr = replay([a.log, fixture], end, a.user_keys)
     diff = [k for k in KEYS + ("monoMissing",) if full[k] != cutr[k]]
     if diff:
         fixture.unlink()
         sys.exit("the cut lost something (%s):\n full: %s\n cut:  %s" % (", ".join(diff),
                  {k: full[k] for k in diff}, {k: cutr[k] for k in diff}))
     expect = {"end": end, "note": a.note}
+    if a.user_keys:
+        expect["userKeys"] = [k for k in a.user_keys.split(",") if k]
     expect.update({k: cutr[k] for k in KEYS})
     if cutr["monoMissing"]:
         expect["monoMissing"] = True   # the game page's Wine Mono hint (only a fixture that shows it says so)

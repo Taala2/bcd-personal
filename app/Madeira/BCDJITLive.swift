@@ -103,8 +103,10 @@ struct BCDJITSetupSheet: View {
 #else
         let simulator = false
 #endif
+        // Inside LiveContainer, whether its Helper Process Support starts BCD's helper (JITBuiltInHost.swift; .notAvailable outside).
         return BCDJITPlatform(osMajor: version.majorVersion, osMinor: version.minorVersion, model: model,
-                              inLiveContainer: getenv("LC_HOME_PATH") != nil, simulator: simulator)
+                              inLiveContainer: getenv("LC_HOME_PATH") != nil, simulator: simulator,
+                              lcHelper: LiveContainerHelper.state)
     }
 
     /// The app's pairing on the device (OnDevicePairing), as BCDJITPairingPanel shows it.
@@ -143,6 +145,7 @@ struct BCDJITSetupSheet: View {
         }
         next.method = BCDJITMethodChoice(rawValue: jit.method.rawValue) ?? .automatic
         next.resolved = BCDJITMethodChoice(rawValue: jit.resolvedMethod.rawValue) ?? .stikDebug
+        next.builtInFirst = JITCoordinator.automaticPrefersBuiltIn
         next.stikDebugFound = StikJITHelper.isAvailable
         next.pairingFile = !jit.pairingImported ? .none : (jit.pairingSource == .onDevice ? .pairedHere : .imported)
 

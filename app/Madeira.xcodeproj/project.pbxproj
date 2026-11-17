@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C0F200000000000000000004 /* BCDThemes.json in Resources */ = {isa = PBXBuildFile; fileRef = C0F100000000000000000004 /* BCDThemes.json */; };
+		C0F200000000000000000003 /* BCDSettingsAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F100000000000000000003 /* BCDSettingsAppearance.swift */; };
+		C0F200000000000000000002 /* BCDTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F100000000000000000002 /* BCDTheme.swift */; };
+		C0F200000000000000000001 /* BCDThemeCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0F100000000000000000001 /* BCDThemeCore.swift */; };
 		1686FBF2209ABE0E71A12807 /* MadeiraMemoryHost.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D80FB04E72418784BED70CF4 /* MadeiraMemoryHost.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		33A1199863C98CF2679931F9 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 76CE67ADF1049F28147EA12C /* Foundation.framework */; };
 		5271C4AE571BDF56B9E51EAA /* MemoryPool.m in Sources */ = {isa = PBXBuildFile; fileRef = 2027C80DC6F4BF37B7522656 /* MemoryPool.m */; };
@@ -46,6 +50,9 @@
 		A1000700 /* SteamCloud.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000700 /* SteamCloud.swift */; };
 		A1000711 /* WineMono.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000711 /* WineMono.swift */; };
 		A1000602 /* SteamDownloadBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000602 /* SteamDownloadBackground.swift */; };
+		A1008B01 /* BackgroundRun.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2008B01 /* BackgroundRun.swift */; };
+		A1008B02 /* Winios/MetalBackgroundGate.m in Sources */ = {isa = PBXBuildFile; fileRef = A2008B02 /* Winios/MetalBackgroundGate.m */; };
+		A1008B03 /* Winios/BackgroundCPUCap.c in Sources */ = {isa = PBXBuildFile; fileRef = A2008B03 /* Winios/BackgroundCPUCap.c */; };
 		A1000600 /* SteamInstall.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000600 /* SteamInstall.swift */; };
 		A1000609 /* SwiftSteam/Content/ContentDecryptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000609 /* ContentDecryptor.swift */; };
 		A100060A /* SwiftSteam/Content/DepotDownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200060A /* DepotDownloader.swift */; };
@@ -64,11 +71,30 @@
 		A1000C0C /* BCDGOG/BCDGOGInstall.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000C0C /* BCDGOGInstall.swift */; };
 		A1000C0D /* BCDGOG/BCDGOG.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000C0D /* BCDGOG.swift */; };
 		A1000C0E /* BCDGOG/BCDLiveStoreGOG.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000C0E /* BCDLiveStoreGOG.swift */; };
+		A1000C20 /* BCDGOG/GOGInstallScript.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000C20 /* GOGInstallScript.swift */; };
+		A1000C21 /* BCDGOG/BCDGOGRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000C21 /* BCDGOGRegistry.swift */; };
+		A1000C22 /* BCDGOG/GOGSetup.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000C22 /* GOGSetup.swift */; };
+		A1000C23 /* BCDGOG/BCDGOGUpdate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000C23 /* BCDGOGUpdate.swift */; };
+		A1000C24 /* BCDGOG/BCDGOGContentV1.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000C24 /* BCDGOGContentV1.swift */; };
+		A100E611 /* BCDGOG/Galaxy/GalaxyWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200E611 /* GalaxyWire.swift */; };
+		A100E612 /* BCDGOG/Galaxy/GalaxyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200E612 /* GalaxyService.swift */; };
+		A100E613 /* BCDGOG/Galaxy/GalaxyListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200E613 /* GalaxyListener.swift */; };
+		A100E614 /* BCDGOG/Galaxy/BCDGOGGalaxyCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200E614 /* BCDGOGGalaxyCore.swift */; };
+		A100E615 /* BCDGOG/Galaxy/BCDGOGGalaxy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200E615 /* BCDGOGGalaxy.swift */; };
+		A100E616 /* BCDGOG/Galaxy/BCDGamePageLiveGalaxy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200E616 /* BCDGamePageLiveGalaxy.swift */; };
 		A1000DA0 /* BCDGameDLC.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000DA0 /* BCDGameDLC.swift */; };
 		A1000DA1 /* BCDSteamDLC/BCDSteamDLC.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000DA1 /* BCDSteamDLC.swift */; };
 		A1000DA2 /* BCDSteamDLC/BCDSteamDLCDownload.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000DA2 /* BCDSteamDLCDownload.swift */; };
 		A1000DA3 /* BCDSteamDLC/BCDSteamDLCService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000DA3 /* BCDSteamDLCService.swift */; };
 		A1000DA4 /* BCDSteamDLC/BCDGamePageLiveDLC.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000DA4 /* BCDGamePageLiveDLC.swift */; };
+		A1000C70 /* BCDGameVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000C70 /* BCDGameVersion.swift */; };
+		A1000C71 /* BCDSteamBranches/BCDGamePageLiveVersion.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000C71 /* BCDGamePageLiveVersion.swift */; };
+		A1000C80 /* BCDWorkshop.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000C80 /* BCDWorkshop.swift */; };
+		A1000C81 /* BCDWorkshopView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000C81 /* BCDWorkshopView.swift */; };
+		A1000C82 /* BCDSteamWorkshop/BCDWorkshopLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000C82 /* BCDWorkshopLive.swift */; };
+		A1000C83 /* BCDSteamWorkshop/SteamWorkshopFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000C83 /* SteamWorkshopFiles.swift */; };
+		A1000C84 /* BCDSteamWorkshop/SteamWorkshopModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000C84 /* SteamWorkshopModel.swift */; };
+		A1000C90 /* SwiftSteam/Content/SteamLANPeer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000C90 /* SteamLANPeer.swift */; };
 		D3C0DF01 /* BCDGameSaves.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3C0DE11 /* BCDGameSaves.swift */; };
 		D3C0DF02 /* BCDSaveBackups/GameSaveRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3C0DE12 /* GameSaveRules.swift */; };
 		D3C0DF03 /* BCDSaveBackups/GameSaveBackups.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3C0DE13 /* GameSaveBackups.swift */; };
@@ -110,6 +136,30 @@
 		A1000F52 /* BCDEpic/BCDEpicCredentials.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000F52 /* BCDEpicCredentials.swift */; };
 		A1000F53 /* BCDEpic/BCDEpicAudit.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000F53 /* BCDEpicAudit.swift */; };
 		A1000F54 /* BCDEpic/BCDEpicStart.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000F54 /* BCDEpicStart.swift */; };
+		A1000F5A /* BCDEpic/EpicFormats.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000F5A /* EpicFormats.swift */; };
+		A1000F5B /* BCDEpic/EpicCloudSaves.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000F5B /* EpicCloudSaves.swift */; };
+		A1000F5C /* BCDEpic/BCDEpicCloudCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000F5C /* BCDEpicCloudCore.swift */; };
+		A1000F5D /* BCDEpic/BCDEpicCloud.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000F5D /* BCDEpicCloud.swift */; };
+		A1000F5E /* BCDEpic/BCDGamePageLiveCloud.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000F5E /* BCDGamePageLiveCloud.swift */; };
+		A1F73001 /* SwiftItch/ItchAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F73001 /* ItchAPI.swift */; };
+		A1F73002 /* SwiftItch/ItchArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F73002 /* ItchArchive.swift */; };
+		A1F73003 /* SwiftItch/ItchInstall.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F73003 /* ItchInstall.swift */; };
+		A1F73004 /* SwiftItch/ItchLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F73004 /* ItchLibrary.swift */; };
+		A1F73005 /* SwiftItch/itch_7z.c in Sources */ = {isa = PBXBuildFile; fileRef = A2F73005 /* itch_7z.c */; };
+		A1F73007 /* BCDItch/BCDLiveStoreItch.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F73007 /* BCDLiveStoreItch.swift */; };
+		A1F73008 /* BCDItch/BCDItchViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F73008 /* BCDItchViews.swift */; };
+		A1F74001 /* SwiftEA/EAAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F74001 /* EAAPI.swift */; };
+		A1F74002 /* SwiftEA/EADownloader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F74002 /* EADownloader.swift */; };
+		A1F74003 /* SwiftEA/EAFormats.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F74003 /* EAFormats.swift */; };
+		A1F74004 /* SwiftEA/EALicense.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F74004 /* EALicense.swift */; };
+		A1F75001 /* BCDStores/BCDStoreCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F75001 /* BCDStoreCards.swift */; };
+		A1F74005 /* SwiftEA/EAService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F74005 /* EAService.swift */; };
+		A1F74006 /* SwiftEA/EALibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F74006 /* EALibrary.swift */; };
+		A1F74007 /* SwiftEA/EARegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F74007 /* EARegistry.swift */; };
+		A1F74008 /* BCDEA/BCDEAMachine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F74008 /* BCDEAMachine.swift */; };
+		A1F74009 /* BCDEA/BCDEAMachineLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F74009 /* BCDEAMachineLive.swift */; };
+		A1F7400A /* BCDEA/BCDLiveStoreEA.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F7400A /* BCDLiveStoreEA.swift */; };
+		A1F7400B /* BCDEA/BCDEAViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F7400B /* BCDEAViews.swift */; };
 		A1000FB5 /* BCDGeckoSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000FB5 /* BCDGeckoSection.swift */; };
 		A1000FB4 /* BCDGecko.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000FB4 /* BCDGecko.swift */; };
 		A1000BA4 /* BCDNWJS64.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000BA4 /* BCDNWJS64.swift */; };
@@ -165,7 +215,9 @@
 		A1000020 /* WineServerBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = A200001E /* WineServerBridge.m */; };
 		A1000021 /* libwineserver.a in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000020 /* libwineserver.a */; };
 		A1000022 /* nls in Resources */ = {isa = PBXBuildFile; fileRef = A2000021 /* nls */; };
+		A10009A1 /* fonts-ja in Resources */ = {isa = PBXBuildFile; fileRef = A20009A1 /* fonts-ja */; };
 		A1000030 /* WineProcessBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = A2000030 /* WineProcessBridge.m */; };
+		A1F5600B /* BCDSchedHints.m in Sources */ = {isa = PBXBuildFile; fileRef = A2F5600B /* BCDSchedHints.m */; };
 		A1000031 /* libntdll_unix.a in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000032 /* libntdll_unix.a */; };
 		A1000032 /* aarch64-windows in Resources */ = {isa = PBXBuildFile; fileRef = A2000033 /* aarch64-windows */; };
 		A1000033 /* wine_stubs.c in Sources */ = {isa = PBXBuildFile; fileRef = A2000034 /* wine_stubs.c */; };
@@ -199,6 +251,12 @@
 		A1000052 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000052 /* Metal.framework */; };
 		A1000053 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000053 /* QuartzCore.framework */; };
 		A1000054 /* MetalFX.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000054 /* MetalFX.framework */; };
+		A1000701 /* Winios/WiniosGL.m in Sources */ = {isa = PBXBuildFile; fileRef = A2000701 /* Winios/WiniosGL.m */; };
+		A1000702 /* OpenGLES.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000702 /* OpenGLES.framework */; settings = {ATTRIBUTES = (Weak, ); }; };
+		A1000703 /* IOSurface.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000703 /* IOSurface.framework */; };
+		A1000704 /* compat in Resources */ = {isa = PBXBuildFile; fileRef = A2000704 /* compat */; };
+		A1000705 /* gl in Resources */ = {isa = PBXBuildFile; fileRef = A2000705 /* gl */; };
+		A1000707 /* vulkan in Resources */ = {isa = PBXBuildFile; fileRef = A2000707 /* vulkan */; };
 		A1000055 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000055 /* libsqlite3.tbd */; };
 		A1000615 /* liblzma.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000615 /* liblzma.tbd */; };
 		A1000060 /* libwin32u_unix.a in Frameworks */ = {isa = PBXBuildFile; fileRef = A2000060 /* libwin32u_unix.a */; };
@@ -271,11 +329,25 @@
 		A1005113 /* BCDDebugLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2005113 /* BCDDebugLive.swift */; };
 		A1005114 /* BCDPauseLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2005114 /* BCDPauseLive.swift */; };
 		A1005115 /* BCDMenuMore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2005115 /* BCDMenuMore.swift */; };
+		A1F56001 /* BCDFrameGen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F56001 /* BCDFrameGen.swift */; };
+		A1F56002 /* BCDFrameGenLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F56002 /* BCDFrameGenLive.swift */; };
+		A1F56003 /* BCDPresentFX.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F56003 /* BCDPresentFX.swift */; };
+		A1F56004 /* BCDPresentFXLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F56004 /* BCDPresentFXLive.swift */; };
+		A1F56005 /* BCDLossless.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F56005 /* BCDLossless.swift */; };
+		A1F56007 /* BCDVTInterp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F56007 /* BCDVTInterp.swift */; };
+		A1F56009 /* BCDSchedHints.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F56009 /* BCDSchedHints.swift */; };
+		A1F5600C /* BCDDriveSpeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F5600C /* BCDDriveSpeed.swift */; };
+		A1F5600D /* BCDPadAuto.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F5600D /* BCDPadAuto.swift */; };
+		A1F56006 /* BCDLosslessLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F56006 /* BCDLosslessLive.swift */; };
+		A1F56008 /* BCDVTInterpLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F56008 /* BCDVTInterpLive.swift */; };
+		A1F5600A /* BCDSchedHintsLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F5600A /* BCDSchedHintsLive.swift */; };
+		A1F5600E /* BCDPadAutoLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F5600E /* BCDPadAutoLive.swift */; };
 		A1005116 /* BCDPhoneRumble.m in Sources */ = {isa = PBXBuildFile; fileRef = A2005116 /* BCDPhoneRumble.m */; };
 		A1005118 /* BCDPauseGate.c in Sources */ = {isa = PBXBuildFile; fileRef = A2005118 /* BCDPauseGate.c */; };
 		A1004711 /* BCDGPUCardsLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2004711 /* BCDGPUCardsLive.swift */; };
 		A1005417 /* ExternalGamesPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2005417 /* ExternalGamesPicker.swift */; };
 		A1004710 /* BCDGPUCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2004710 /* BCDGPUCards.swift */; };
+		A1004801 /* BCDOpenGL.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2004801 /* BCDOpenGL.swift */; };
 		A1004703 /* BCDExtraKeysLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2004703 /* BCDExtraKeysLive.swift */; };
 		A1004702 /* BCDExtraKeyBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2004702 /* BCDExtraKeyBar.swift */; };
 		A1004701 /* BCDExtraKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2004701 /* BCDExtraKeys.swift */; };
@@ -288,6 +360,14 @@
 		A1000245 /* TouchGamepad.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000245 /* TouchGamepad.swift */; };
 		A1000246 /* TouchControlPresets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000246 /* TouchControlPresets.swift */; };
 		A1000BD0 /* BCDTouchCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000BD0 /* BCDTouchCore.swift */; };
+		A1F56018 /* BCDExplain.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F56018 /* BCDExplain.swift */; };
+		A1F56017 /* BCDAmazon/BCDAmazonViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F56017 /* BCDAmazon/BCDAmazonViews.swift */; };
+		A1F56016 /* BCDAmazon/BCDLiveStoreAmazon.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F56016 /* BCDAmazon/BCDLiveStoreAmazon.swift */; };
+		A1F56015 /* SwiftAmazon/AmazonLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F56015 /* SwiftAmazon/AmazonLibrary.swift */; };
+		A1F56014 /* SwiftAmazon/AmazonAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F56014 /* SwiftAmazon/AmazonAPI.swift */; };
+		A1F56013 /* SwiftAmazon/AmazonAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F56013 /* SwiftAmazon/AmazonAuth.swift */; };
+		A1F56012 /* SwiftAmazon/AmazonManifest.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F56012 /* SwiftAmazon/AmazonManifest.swift */; };
+		A1F5600F /* BCDFloatingStick.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F5600F /* BCDFloatingStick.swift */; };
 		A1000BD1 /* BCDTouchControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000BD1 /* BCDTouchControls.swift */; };
 		A1000BD2 /* BCDTouchLayouts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000BD2 /* BCDTouchLayouts.swift */; };
 		A1000BD3 /* BCDTouchEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000BD3 /* BCDTouchEditor.swift */; };
@@ -322,9 +402,11 @@
 		A1000915 /* AutoTune.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000915 /* AutoTune.swift */; };
 		A1000916 /* AutoTuneCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000916 /* AutoTuneCore.swift */; };
 		A1000917 /* AutoTuneViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000917 /* AutoTuneViews.swift */; };
+		A1F56010 /* AutoTuneAsk.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F56010 /* AutoTuneAsk.swift */; };
 		A1000918 /* AutoTuneRules.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000918 /* AutoTuneRules.generated.swift */; };
 		A1000920 /* LogUpload.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000920 /* LogUpload.swift */; };
 		A1000921 /* LogUploadCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000921 /* LogUploadCore.swift */; };
+		A1F56011 /* BCDLogThin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F56011 /* BCDLogThin.swift */; };
 		A1000FE0 /* FeedbackUpload.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000FE0 /* FeedbackUpload.swift */; };
 		A1000FE1 /* FeedbackUploadCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000FE1 /* FeedbackUploadCore.swift */; };
 		A1F5500C /* BCDControlShareLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F5500C /* BCDControlShareLive.swift */; };
@@ -349,12 +431,17 @@
 		A1005603 /* BCDFoldableSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2005603 /* BCDFoldableSettings.swift */; };
 		A1005604 /* BCDFoldableUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2005604 /* BCDFoldableUI.swift */; };
 		A1004103 /* BCDGraphicsRoutes.c in Sources */ = {isa = PBXBuildFile; fileRef = A2004103 /* BCDGraphicsRoutes.c */; };
+		A10041A1 /* BCDJapanese.c in Sources */ = {isa = PBXBuildFile; fileRef = A20041A1 /* BCDJapanese.c */; };
 		A10013C3 /* BCDOrientation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20013C3 /* BCDOrientation.swift */; };
 		A10013C4 /* BCDOrientationLive.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20013C4 /* BCDOrientationLive.swift */; };
 		A1000B03 /* VCRuntimeDownload.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000B03 /* VCRuntimeDownload.swift */; };
 		A1000913 /* DockReset.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000913 /* DockReset.swift */; };
 		A1000F90 /* DockGameEnd.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000F90 /* DockGameEnd.swift */; };
+		A100E601 /* DockFriends.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200E601 /* DockFriends.swift */; };
+		A100E602 /* DockFriendsMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200E602 /* DockFriendsMenu.swift */; };
 		A1000209 /* StorageModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000209 /* StorageModel.swift */; };
+		A1E46401 /* ExternalDrives.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2E46401 /* ExternalDrives.swift */; };
+		A1E46402 /* ExternalStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2E46402 /* ExternalStorage.swift */; };
 		A1000211 /* SavesAndShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000211 /* SavesAndShortcuts.swift */; };
 		A1000400 /* Library.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000400 /* Library.swift */; };
 		A1000401 /* GuestDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000401 /* GuestDisplay.swift */; };
@@ -415,6 +502,10 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		C0F100000000000000000004 /* BCDThemes.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = BCDThemes.json; sourceTree = "<group>"; };
+		C0F100000000000000000003 /* BCDSettingsAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDSettingsAppearance.swift; sourceTree = "<group>"; };
+		C0F100000000000000000002 /* BCDTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDTheme.swift; sourceTree = "<group>"; };
+		C0F100000000000000000001 /* BCDThemeCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDThemeCore.swift; sourceTree = "<group>"; };
 		2027C80DC6F4BF37B7522656 /* MemoryPool.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = MemoryPool.m; sourceTree = "<group>"; };
 		32607841304656C675DB52CF /* MemoryHostTest.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = MemoryHostTest.h; sourceTree = "<group>"; };
 		36023A5C635793C3C00F4FA5 /* MemoryHostProtocol.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = MemoryHostProtocol.h; sourceTree = "<group>"; };
@@ -457,6 +548,9 @@
 		A2000700 /* SteamCloud.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SteamCloud.swift"; sourceTree = "<group>"; };
 		A2000711 /* WineMono.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "WineMono.swift"; sourceTree = "<group>"; };
 		A2000602 /* SteamDownloadBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SteamDownloadBackground.swift"; sourceTree = "<group>"; };
+		A2008B01 /* BackgroundRun.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundRun.swift; sourceTree = "<group>"; };
+		A2008B02 /* Winios/MetalBackgroundGate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Winios/MetalBackgroundGate.m; sourceTree = "<group>"; };
+		A2008B03 /* Winios/BackgroundCPUCap.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Winios/BackgroundCPUCap.c; sourceTree = "<group>"; };
 		A2000600 /* SteamInstall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SteamInstall.swift"; sourceTree = "<group>"; };
 		A2000609 /* ContentDecryptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SwiftSteam/Content/ContentDecryptor.swift"; sourceTree = "<group>"; };
 		A200060A /* DepotDownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SwiftSteam/Content/DepotDownloader.swift"; sourceTree = "<group>"; };
@@ -475,11 +569,30 @@
 		A2000C0C /* BCDGOGInstall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDGOG/BCDGOGInstall.swift"; sourceTree = "<group>"; };
 		A2000C0D /* BCDGOG.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDGOG/BCDGOG.swift"; sourceTree = "<group>"; };
 		A2000C0E /* BCDLiveStoreGOG.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDGOG/BCDLiveStoreGOG.swift"; sourceTree = "<group>"; };
+		A2000C20 /* GOGInstallScript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDGOG/GOGInstallScript.swift"; sourceTree = "<group>"; };
+		A2000C21 /* BCDGOGRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDGOG/BCDGOGRegistry.swift"; sourceTree = "<group>"; };
+		A2000C22 /* GOGSetup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDGOG/GOGSetup.swift"; sourceTree = "<group>"; };
+		A2000C23 /* BCDGOGUpdate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDGOG/BCDGOGUpdate.swift"; sourceTree = "<group>"; };
+		A2000C24 /* BCDGOGContentV1.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDGOG/BCDGOGContentV1.swift"; sourceTree = "<group>"; };
+		A200E611 /* GalaxyWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDGOG/Galaxy/GalaxyWire.swift"; sourceTree = "<group>"; };
+		A200E612 /* GalaxyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDGOG/Galaxy/GalaxyService.swift"; sourceTree = "<group>"; };
+		A200E613 /* GalaxyListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDGOG/Galaxy/GalaxyListener.swift"; sourceTree = "<group>"; };
+		A200E614 /* BCDGOGGalaxyCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDGOG/Galaxy/BCDGOGGalaxyCore.swift"; sourceTree = "<group>"; };
+		A200E615 /* BCDGOGGalaxy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDGOG/Galaxy/BCDGOGGalaxy.swift"; sourceTree = "<group>"; };
+		A200E616 /* BCDGamePageLiveGalaxy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDGOG/Galaxy/BCDGamePageLiveGalaxy.swift"; sourceTree = "<group>"; };
 		A2000DA0 /* BCDGameDLC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDGameDLC.swift; sourceTree = "<group>"; };
 		A2000DA1 /* BCDSteamDLC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDSteamDLC/BCDSteamDLC.swift"; sourceTree = "<group>"; };
 		A2000DA2 /* BCDSteamDLCDownload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDSteamDLC/BCDSteamDLCDownload.swift"; sourceTree = "<group>"; };
 		A2000DA3 /* BCDSteamDLCService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDSteamDLC/BCDSteamDLCService.swift"; sourceTree = "<group>"; };
 		A2000DA4 /* BCDGamePageLiveDLC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDSteamDLC/BCDGamePageLiveDLC.swift"; sourceTree = "<group>"; };
+		A2000C70 /* BCDGameVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDGameVersion.swift; sourceTree = "<group>"; };
+		A2000C71 /* BCDGamePageLiveVersion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDSteamBranches/BCDGamePageLiveVersion.swift"; sourceTree = "<group>"; };
+		A2000C80 /* BCDWorkshop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDWorkshop.swift; sourceTree = "<group>"; };
+		A2000C81 /* BCDWorkshopView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDWorkshopView.swift; sourceTree = "<group>"; };
+		A2000C82 /* BCDWorkshopLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDSteamWorkshop/BCDWorkshopLive.swift"; sourceTree = "<group>"; };
+		A2000C83 /* SteamWorkshopFiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDSteamWorkshop/SteamWorkshopFiles.swift"; sourceTree = "<group>"; };
+		A2000C84 /* SteamWorkshopModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDSteamWorkshop/SteamWorkshopModel.swift"; sourceTree = "<group>"; };
+		A2000C90 /* SteamLANPeer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SwiftSteam/Content/SteamLANPeer.swift"; sourceTree = "<group>"; };
 		D3C0DE11 /* BCDGameSaves.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDGameSaves.swift; sourceTree = "<group>"; };
 		D3C0DE12 /* GameSaveRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDSaveBackups/GameSaveRules.swift"; sourceTree = "<group>"; };
 		D3C0DE13 /* GameSaveBackups.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDSaveBackups/GameSaveBackups.swift"; sourceTree = "<group>"; };
@@ -521,6 +634,31 @@
 		A2000F52 /* BCDEpicCredentials.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDEpic/BCDEpicCredentials.swift"; sourceTree = "<group>"; };
 		A2000F53 /* BCDEpicAudit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDEpic/BCDEpicAudit.swift"; sourceTree = "<group>"; };
 		A2000F54 /* BCDEpicStart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDEpic/BCDEpicStart.swift"; sourceTree = "<group>"; };
+		A2000F5A /* EpicFormats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDEpic/EpicFormats.swift"; sourceTree = "<group>"; };
+		A2000F5B /* EpicCloudSaves.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDEpic/EpicCloudSaves.swift"; sourceTree = "<group>"; };
+		A2000F5C /* BCDEpicCloudCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDEpic/BCDEpicCloudCore.swift"; sourceTree = "<group>"; };
+		A2000F5D /* BCDEpicCloud.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDEpic/BCDEpicCloud.swift"; sourceTree = "<group>"; };
+		A2000F5E /* BCDGamePageLiveCloud.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDEpic/BCDGamePageLiveCloud.swift"; sourceTree = "<group>"; };
+		A2F73001 /* ItchAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SwiftItch/ItchAPI.swift"; sourceTree = "<group>"; };
+		A2F73002 /* ItchArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SwiftItch/ItchArchive.swift"; sourceTree = "<group>"; };
+		A2F73003 /* ItchInstall.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SwiftItch/ItchInstall.swift"; sourceTree = "<group>"; };
+		A2F73004 /* ItchLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SwiftItch/ItchLibrary.swift"; sourceTree = "<group>"; };
+		A2F73005 /* itch_7z.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = "SwiftItch/itch_7z.c"; sourceTree = "<group>"; };
+		A2F73006 /* itch_7z.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "SwiftItch/itch_7z.h"; sourceTree = "<group>"; };
+		A2F73007 /* BCDLiveStoreItch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDItch/BCDLiveStoreItch.swift"; sourceTree = "<group>"; };
+		A2F73008 /* BCDItchViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDItch/BCDItchViews.swift"; sourceTree = "<group>"; };
+		A2F74001 /* EAAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SwiftEA/EAAPI.swift"; sourceTree = "<group>"; };
+		A2F74002 /* EADownloader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SwiftEA/EADownloader.swift"; sourceTree = "<group>"; };
+		A2F74003 /* EAFormats.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SwiftEA/EAFormats.swift"; sourceTree = "<group>"; };
+		A2F74004 /* EALicense.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SwiftEA/EALicense.swift"; sourceTree = "<group>"; };
+		A2F75001 /* BCDStoreCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDStores/BCDStoreCards.swift"; sourceTree = "<group>"; };
+		A2F74005 /* EAService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SwiftEA/EAService.swift"; sourceTree = "<group>"; };
+		A2F74006 /* EALibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SwiftEA/EALibrary.swift"; sourceTree = "<group>"; };
+		A2F74007 /* EARegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SwiftEA/EARegistry.swift"; sourceTree = "<group>"; };
+		A2F74008 /* BCDEAMachine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDEA/BCDEAMachine.swift"; sourceTree = "<group>"; };
+		A2F74009 /* BCDEAMachineLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDEA/BCDEAMachineLive.swift"; sourceTree = "<group>"; };
+		A2F7400A /* BCDLiveStoreEA.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDEA/BCDLiveStoreEA.swift"; sourceTree = "<group>"; };
+		A2F7400B /* BCDEAViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDEA/BCDEAViews.swift"; sourceTree = "<group>"; };
 		A2000FB5 /* BCDGeckoSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDGeckoSection.swift; sourceTree = "<group>"; };
 		A2000FB4 /* BCDGecko.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDGecko.swift; sourceTree = "<group>"; };
 		A2000BA4 /* BCDNWJS64.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDNWJS64.swift; sourceTree = "<group>"; };
@@ -586,7 +724,9 @@
 		A200001F /* WineServerBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WineServerBridge.h; sourceTree = "<group>"; };
 		A2000020 /* libwineserver.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libwineserver.a; sourceTree = "<group>"; };
 		A2000021 /* nls */ = {isa = PBXFileReference; lastKnownFileType = folder; path = nls; sourceTree = "<group>"; };
+		A20009A1 /* fonts-ja */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "fonts-ja"; sourceTree = "<group>"; };
 		A2000030 /* WineProcessBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WineProcessBridge.m; sourceTree = "<group>"; };
+		A2F5600B /* BCDSchedHints.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = BCDSchedHints.m; sourceTree = "<group>"; };
 		A2000031 /* WineProcessBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WineProcessBridge.h; sourceTree = "<group>"; };
 		A2000032 /* libntdll_unix.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libntdll_unix.a; sourceTree = "<group>"; };
 		A2000033 /* aarch64-windows */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "aarch64-windows"; sourceTree = "<group>"; };
@@ -623,6 +763,12 @@
 		A2000052 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
 		A2000053 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
 		A2000054 /* MetalFX.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalFX.framework; path = System/Library/Frameworks/MetalFX.framework; sourceTree = SDKROOT; };
+		A2000701 /* Winios/WiniosGL.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Winios/WiniosGL.m; sourceTree = "<group>"; };
+		A2000702 /* OpenGLES.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenGLES.framework; path = System/Library/Frameworks/OpenGLES.framework; sourceTree = SDKROOT; };
+		A2000703 /* IOSurface.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOSurface.framework; path = System/Library/Frameworks/IOSurface.framework; sourceTree = SDKROOT; };
+		A2000704 /* compat */ = {isa = PBXFileReference; lastKnownFileType = folder; path = compat; sourceTree = "<group>"; };
+		A2000705 /* gl */ = {isa = PBXFileReference; lastKnownFileType = folder; path = gl; sourceTree = "<group>"; };
+		A2000707 /* vulkan */ = {isa = PBXFileReference; lastKnownFileType = folder; path = vulkan; sourceTree = "<group>"; };
 		A2000055 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 		A2000615 /* liblzma.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = liblzma.tbd; path = usr/lib/liblzma.tbd; sourceTree = SDKROOT; };
 		A2000056 /* IOSDisplayShim.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = IOSDisplayShim.h; sourceTree = "<group>"; };
@@ -699,6 +845,19 @@
 		A2005113 /* BCDDebugLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDDebugLive.swift; sourceTree = "<group>"; };
 		A2005114 /* BCDPauseLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDPauseLive.swift; sourceTree = "<group>"; };
 		A2005115 /* BCDMenuMore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDMenuMore.swift; sourceTree = "<group>"; };
+		A2F56001 /* BCDFrameGen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDFrameGen.swift; sourceTree = "<group>"; };
+		A2F56002 /* BCDFrameGenLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDFrameGenLive.swift; sourceTree = "<group>"; };
+		A2F56003 /* BCDPresentFX.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDPresentFX.swift; sourceTree = "<group>"; };
+		A2F56004 /* BCDPresentFXLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDPresentFXLive.swift; sourceTree = "<group>"; };
+		A2F56005 /* BCDLossless.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDLossless.swift; sourceTree = "<group>"; };
+		A2F56007 /* BCDVTInterp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDVTInterp.swift; sourceTree = "<group>"; };
+		A2F56009 /* BCDSchedHints.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDSchedHints.swift; sourceTree = "<group>"; };
+		A2F5600C /* BCDDriveSpeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDDriveSpeed.swift; sourceTree = "<group>"; };
+		A2F5600D /* BCDPadAuto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDPadAuto.swift; sourceTree = "<group>"; };
+		A2F56006 /* BCDLosslessLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDLosslessLive.swift; sourceTree = "<group>"; };
+		A2F56008 /* BCDVTInterpLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDVTInterpLive.swift; sourceTree = "<group>"; };
+		A2F5600A /* BCDSchedHintsLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDSchedHintsLive.swift; sourceTree = "<group>"; };
+		A2F5600E /* BCDPadAutoLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDPadAutoLive.swift; sourceTree = "<group>"; };
 		A2005116 /* BCDPhoneRumble.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = BCDPhoneRumble.m; sourceTree = "<group>"; };
 		A2005117 /* BCDPhoneRumble.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BCDPhoneRumble.h; sourceTree = "<group>"; };
 		A2005118 /* BCDPauseGate.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = BCDPauseGate.c; sourceTree = "<group>"; };
@@ -706,6 +865,7 @@
 		A2004711 /* BCDGPUCardsLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDGPUCardsLive.swift; sourceTree = "<group>"; };
 		A2005417 /* ExternalGamesPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalGamesPicker.swift; sourceTree = "<group>"; };
 		A2004710 /* BCDGPUCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDGPUCards.swift; sourceTree = "<group>"; };
+		A2004801 /* BCDOpenGL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDOpenGL.swift; sourceTree = "<group>"; };
 		A2004703 /* BCDExtraKeysLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDExtraKeysLive.swift; sourceTree = "<group>"; };
 		A2004702 /* BCDExtraKeyBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDExtraKeyBar.swift; sourceTree = "<group>"; };
 		A2004701 /* BCDExtraKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDExtraKeys.swift; sourceTree = "<group>"; };
@@ -718,6 +878,14 @@
 		A2000245 /* TouchGamepad.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TouchGamepad.swift; sourceTree = "<group>"; };
 		A2000246 /* TouchControlPresets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TouchControlPresets.swift; sourceTree = "<group>"; };
 		A2000BD0 /* BCDTouchCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDTouchCore.swift; sourceTree = "<group>"; };
+		A2F56018 /* BCDExplain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDExplain.swift; sourceTree = "<group>"; };
+		A2F56017 /* BCDAmazon/BCDAmazonViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDAmazon/BCDAmazonViews.swift"; sourceTree = "<group>"; };
+		A2F56016 /* BCDAmazon/BCDLiveStoreAmazon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BCDAmazon/BCDLiveStoreAmazon.swift"; sourceTree = "<group>"; };
+		A2F56015 /* SwiftAmazon/AmazonLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SwiftAmazon/AmazonLibrary.swift"; sourceTree = "<group>"; };
+		A2F56014 /* SwiftAmazon/AmazonAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SwiftAmazon/AmazonAPI.swift"; sourceTree = "<group>"; };
+		A2F56013 /* SwiftAmazon/AmazonAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SwiftAmazon/AmazonAuth.swift"; sourceTree = "<group>"; };
+		A2F56012 /* SwiftAmazon/AmazonManifest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SwiftAmazon/AmazonManifest.swift"; sourceTree = "<group>"; };
+		A2F5600F /* BCDFloatingStick.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDFloatingStick.swift; sourceTree = "<group>"; };
 		A2000BD1 /* BCDTouchControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDTouchControls.swift; sourceTree = "<group>"; };
 		A2000BD2 /* BCDTouchLayouts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDTouchLayouts.swift; sourceTree = "<group>"; };
 		A2000BD3 /* BCDTouchEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDTouchEditor.swift; sourceTree = "<group>"; };
@@ -752,9 +920,11 @@
 		A2000915 /* AutoTune.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoTune.swift; sourceTree = "<group>"; };
 		A2000916 /* AutoTuneCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoTuneCore.swift; sourceTree = "<group>"; };
 		A2000917 /* AutoTuneViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoTuneViews.swift; sourceTree = "<group>"; };
+		A2F56010 /* AutoTuneAsk.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoTuneAsk.swift; sourceTree = "<group>"; };
 		A2000918 /* AutoTuneRules.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoTuneRules.generated.swift; sourceTree = "<group>"; };
 		A2000920 /* LogUpload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogUpload.swift; sourceTree = "<group>"; };
 		A2000921 /* LogUploadCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogUploadCore.swift; sourceTree = "<group>"; };
+		A2F56011 /* BCDLogThin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDLogThin.swift; sourceTree = "<group>"; };
 		A2000FE0 /* FeedbackUpload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackUpload.swift; sourceTree = "<group>"; };
 		A2000FE1 /* FeedbackUploadCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeedbackUploadCore.swift; sourceTree = "<group>"; };
 		A2F5500C /* BCDControlShareLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDControlShareLive.swift; sourceTree = "<group>"; };
@@ -783,12 +953,18 @@
 		A2005604 /* BCDFoldableUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDFoldableUI.swift; sourceTree = "<group>"; };
 		A2004103 /* BCDGraphicsRoutes.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = BCDGraphicsRoutes.c; sourceTree = "<group>"; };
 		A2004104 /* BCDGraphicsRoutes.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BCDGraphicsRoutes.h; sourceTree = "<group>"; };
+		A20041A1 /* BCDJapanese.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = BCDJapanese.c; sourceTree = "<group>"; };
+		A20041A2 /* BCDJapanese.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BCDJapanese.h; sourceTree = "<group>"; };
 		A20013C3 /* BCDOrientation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDOrientation.swift; sourceTree = "<group>"; };
 		A20013C4 /* BCDOrientationLive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BCDOrientationLive.swift; sourceTree = "<group>"; };
 		A2000B03 /* VCRuntimeDownload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VCRuntimeDownload.swift; sourceTree = "<group>"; };
 		A2000913 /* DockReset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockReset.swift; sourceTree = "<group>"; };
 		A2000F90 /* DockGameEnd.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockGameEnd.swift; sourceTree = "<group>"; };
+		A200E601 /* DockFriends.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockFriends.swift; sourceTree = "<group>"; };
+		A200E602 /* DockFriendsMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockFriendsMenu.swift; sourceTree = "<group>"; };
 		A2000209 /* StorageModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageModel.swift; sourceTree = "<group>"; };
+		A2E46401 /* ExternalDrives.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalDrives.swift; sourceTree = "<group>"; };
+		A2E46402 /* ExternalStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExternalStorage.swift; sourceTree = "<group>"; };
 		A2000211 /* SavesAndShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavesAndShortcuts.swift; sourceTree = "<group>"; };
 		A2000400 /* Library.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Library.swift; sourceTree = "<group>"; };
 		A2000401 /* GuestDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuestDisplay.swift; sourceTree = "<group>"; };
@@ -826,6 +1002,8 @@
 				A1000052 /* Metal.framework in Frameworks */,
 				A1000053 /* QuartzCore.framework in Frameworks */,
 				A1000054 /* MetalFX.framework in Frameworks */,
+				A1000702 /* OpenGLES.framework in Frameworks */,
+				A1000703 /* IOSurface.framework in Frameworks */,
 				A1000055 /* libsqlite3.tbd in Frameworks */,
 				A1000615 /* liblzma.tbd in Frameworks */,
 				A1000060 /* libwin32u_unix.a in Frameworks */,
@@ -902,6 +1080,10 @@
 				A2000B86 /* BCDUpdates.swift */,
 				A2000B87 /* BCDSettingsFeedback.swift */,
 				A2000BC1 /* BCDStyle.swift */,
+				C0F100000000000000000004 /* BCDThemes.json */,
+				C0F100000000000000000003 /* BCDSettingsAppearance.swift */,
+				C0F100000000000000000002 /* BCDTheme.swift */,
+				C0F100000000000000000001 /* BCDThemeCore.swift */,
 				A2000BC2 /* BCDSetupView.swift */,
 				A2000B10 /* BCDStore.swift */,
 				A2000B11 /* BCDFocus.swift */,
@@ -940,7 +1122,12 @@
 				A2005604 /* BCDFoldableUI.swift */,
 				A2004103 /* BCDGraphicsRoutes.c */,
 				A2004104 /* BCDGraphicsRoutes.h */,
+				A20041A1 /* BCDJapanese.c */,
+				A20041A2 /* BCDJapanese.h */,
 				A2000602 /* SteamDownloadBackground.swift */,
+				A2008B01 /* BackgroundRun.swift */,
+				A2008B02 /* Winios/MetalBackgroundGate.m */,
+				A2008B03 /* Winios/BackgroundCPUCap.c */,
 				A2000600 /* SteamInstall.swift */,
 				A2000609 /* ContentDecryptor.swift */,
 				A200060A /* DepotDownloader.swift */,
@@ -958,12 +1145,31 @@
 				A2000C0B /* BCDGOGContent.swift */,
 				A2000C0C /* BCDGOGInstall.swift */,
 				A2000C0D /* BCDGOG.swift */,
+				A2000C20 /* GOGInstallScript.swift */,
+				A2000C21 /* BCDGOGRegistry.swift */,
+				A2000C22 /* GOGSetup.swift */,
+				A2000C23 /* BCDGOGUpdate.swift */,
+				A2000C24 /* BCDGOGContentV1.swift */,
+				A200E611 /* GalaxyWire.swift */,
+				A200E612 /* GalaxyService.swift */,
+				A200E613 /* GalaxyListener.swift */,
+				A200E614 /* BCDGOGGalaxyCore.swift */,
+				A200E615 /* BCDGOGGalaxy.swift */,
+				A200E616 /* BCDGamePageLiveGalaxy.swift */,
 				A2000C0E /* BCDLiveStoreGOG.swift */,
 				A2000DA0 /* BCDGameDLC.swift */,
 				A2000DA1 /* BCDSteamDLC.swift */,
 				A2000DA2 /* BCDSteamDLCDownload.swift */,
 				A2000DA3 /* BCDSteamDLCService.swift */,
 				A2000DA4 /* BCDGamePageLiveDLC.swift */,
+				A2000C70 /* BCDGameVersion.swift */,
+				A2000C71 /* BCDGamePageLiveVersion.swift */,
+				A2000C80 /* BCDWorkshop.swift */,
+				A2000C81 /* BCDWorkshopView.swift */,
+				A2000C82 /* BCDWorkshopLive.swift */,
+				A2000C83 /* SteamWorkshopFiles.swift */,
+				A2000C84 /* SteamWorkshopModel.swift */,
+				A2000C90 /* SteamLANPeer.swift */,
 				D3C0DE11 /* BCDGameSaves.swift */,
 				D3C0DE12 /* GameSaveRules.swift */,
 				D3C0DE13 /* GameSaveBackups.swift */,
@@ -1005,6 +1211,31 @@
 				A2000F52 /* BCDEpicCredentials.swift */,
 				A2000F53 /* BCDEpicAudit.swift */,
 				A2000F54 /* BCDEpicStart.swift */,
+				A2000F5A /* EpicFormats.swift */,
+				A2000F5B /* EpicCloudSaves.swift */,
+				A2000F5C /* BCDEpicCloudCore.swift */,
+				A2000F5D /* BCDEpicCloud.swift */,
+				A2000F5E /* BCDGamePageLiveCloud.swift */,
+				A2F73001 /* ItchAPI.swift */,
+				A2F73002 /* ItchArchive.swift */,
+				A2F73003 /* ItchInstall.swift */,
+				A2F73004 /* ItchLibrary.swift */,
+				A2F73005 /* itch_7z.c */,
+				A2F73006 /* itch_7z.h */,
+				A2F73007 /* BCDLiveStoreItch.swift */,
+				A2F73008 /* BCDItchViews.swift */,
+				A2F74001 /* EAAPI.swift */,
+				A2F74002 /* EADownloader.swift */,
+				A2F74003 /* EAFormats.swift */,
+				A2F74004 /* EALicense.swift */,
+				A2F75001 /* BCDStoreCards.swift */,
+				A2F74005 /* EAService.swift */,
+				A2F74006 /* EALibrary.swift */,
+				A2F74007 /* EARegistry.swift */,
+				A2F74008 /* BCDEAMachine.swift */,
+				A2F74009 /* BCDEAMachineLive.swift */,
+				A2F7400A /* BCDLiveStoreEA.swift */,
+				A2F7400B /* BCDEAViews.swift */,
 				A2000FB5 /* BCDGeckoSection.swift */,
 				A2000FB4 /* BCDGecko.swift */,
 				A2000BA4 /* BCDNWJS64.swift */,
@@ -1049,6 +1280,14 @@
 				A2000245 /* TouchGamepad.swift */,
 				A2000246 /* TouchControlPresets.swift */,
 				A2000BD0 /* BCDTouchCore.swift */,
+				A2F56018 /* BCDExplain.swift */,
+				A2F56017 /* BCDAmazon/BCDAmazonViews.swift */,
+				A2F56016 /* BCDAmazon/BCDLiveStoreAmazon.swift */,
+				A2F56015 /* SwiftAmazon/AmazonLibrary.swift */,
+				A2F56014 /* SwiftAmazon/AmazonAPI.swift */,
+				A2F56013 /* SwiftAmazon/AmazonAuth.swift */,
+				A2F56012 /* SwiftAmazon/AmazonManifest.swift */,
+				A2F5600F /* BCDFloatingStick.swift */,
 				A2000BD1 /* BCDTouchControls.swift */,
 				A2000BD2 /* BCDTouchLayouts.swift */,
 				A2000BD3 /* BCDTouchEditor.swift */,
@@ -1119,6 +1358,19 @@
 				A2005113 /* BCDDebugLive.swift */,
 				A2005114 /* BCDPauseLive.swift */,
 				A2005115 /* BCDMenuMore.swift */,
+				A2F56001 /* BCDFrameGen.swift */,
+				A2F56002 /* BCDFrameGenLive.swift */,
+				A2F56003 /* BCDPresentFX.swift */,
+				A2F56004 /* BCDPresentFXLive.swift */,
+				A2F56005 /* BCDLossless.swift */,
+				A2F56007 /* BCDVTInterp.swift */,
+				A2F56009 /* BCDSchedHints.swift */,
+				A2F5600C /* BCDDriveSpeed.swift */,
+				A2F5600D /* BCDPadAuto.swift */,
+				A2F56006 /* BCDLosslessLive.swift */,
+				A2F56008 /* BCDVTInterpLive.swift */,
+				A2F5600A /* BCDSchedHintsLive.swift */,
+				A2F5600E /* BCDPadAutoLive.swift */,
 				A2005116 /* BCDPhoneRumble.m */,
 				A2005117 /* BCDPhoneRumble.h */,
 				A2005118 /* BCDPauseGate.c */,
@@ -1126,6 +1378,7 @@
 				A2004711 /* BCDGPUCardsLive.swift */,
 				A2005417 /* ExternalGamesPicker.swift */,
 				A2004710 /* BCDGPUCards.swift */,
+				A2004801 /* BCDOpenGL.swift */,
 				A2004703 /* BCDExtraKeysLive.swift */,
 				A2004702 /* BCDExtraKeyBar.swift */,
 				A2004701 /* BCDExtraKeys.swift */,
@@ -1149,9 +1402,11 @@
 				A2000915 /* AutoTune.swift */,
 				A2000916 /* AutoTuneCore.swift */,
 				A2000917 /* AutoTuneViews.swift */,
+				A2F56010 /* AutoTuneAsk.swift */,
 				A2000918 /* AutoTuneRules.generated.swift */,
 				A2000920 /* LogUpload.swift */,
 				A2000921 /* LogUploadCore.swift */,
+				A2F56011 /* BCDLogThin.swift */,
 				A2000FE0 /* FeedbackUpload.swift */,
 				A2000FE1 /* FeedbackUploadCore.swift */,
 				A2F5500C /* BCDControlShareLive.swift */,
@@ -1168,7 +1423,11 @@
 				A2F55001 /* BCDPerfTraceCore.swift */,
 				A2000913 /* DockReset.swift */,
 				A2000F90 /* DockGameEnd.swift */,
+				A200E601 /* DockFriends.swift */,
+				A200E602 /* DockFriendsMenu.swift */,
 				A2000209 /* StorageModel.swift */,
+				A2E46401 /* ExternalDrives.swift */,
+				A2E46402 /* ExternalStorage.swift */,
 				A2000211 /* SavesAndShortcuts.swift */,
 				A2000400 /* Library.swift */,
 				A2000401 /* GuestDisplay.swift */,
@@ -1179,6 +1438,7 @@
 				A200001E /* WineServerBridge.m */,
 				A200001F /* WineServerBridge.h */,
 				A2000030 /* WineProcessBridge.m */,
+				A2F5600B /* BCDSchedHints.m */,
 				A2000031 /* WineProcessBridge.h */,
 				A200000A /* EntitlementChecker.swift */,
 				A2000036 /* StikJITHelper.swift */,
@@ -1199,10 +1459,14 @@
 				B2000004 /* madeira-jit.js */,
 				B2000051 /* Madeira JIT.shortcut */,
 				A2000021 /* nls */,
+				A20009A1 /* fonts-ja */,
 				A2000033 /* aarch64-windows */,
 				A20000F1 /* legal */,
 				A2000080 /* arm64ec-windows */,
 				A2000210 /* i386-windows */,
+				A2000704 /* compat */,
+				A2000705 /* gl */,
+				A2000707 /* vulkan */,
 				A20000D1 /* d3d12 */,
 				A20000D2 /* licenses */,
 				A2000081 /* x86_64-vcruntime */,
@@ -1214,6 +1478,7 @@
 				A2000050 /* IOSDisplayShim.m */,
 				A2000056 /* IOSDisplayShim.h */,
 				A2000070 /* Winios/Winios.m */,
+				A2000701 /* Winios/WiniosGL.m */,
 				A2000071 /* Winios/Winios.h */,
 				A2000247 /* PadOutput.m */,
 				A2000248 /* PadOutput.h */,
@@ -1258,6 +1523,8 @@
 				A2000052 /* Metal.framework */,
 				A2000053 /* QuartzCore.framework */,
 				A2000054 /* MetalFX.framework */,
+				A2000702 /* OpenGLES.framework */,
+				A2000703 /* IOSurface.framework */,
 				A2000055 /* libsqlite3.tbd */,
 				A2000615 /* liblzma.tbd */,
 				A2000060 /* libwin32u_unix.a */,
@@ -1408,10 +1675,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1000022 /* nls in Resources */,
+				A10009A1 /* fonts-ja in Resources */,
 				A1000032 /* aarch64-windows in Resources */,
 				A10000F1 /* legal in Resources */,
 				A1000080 /* arm64ec-windows in Resources */,
 				A1000210 /* i386-windows in Resources */,
+				A1000704 /* compat in Resources */,
+				A1000705 /* gl in Resources */,
+				A1000707 /* vulkan in Resources */,
 				A10000D1 /* d3d12 in Resources */,
 				A10000D2 /* licenses in Resources */,
 				A1000081 /* x86_64-vcruntime in Resources */,
@@ -1420,6 +1691,7 @@
 				A1000094 /* cacert.pem in Resources */,
 				A1000BA2 /* recommendations.json in Resources */,
 				A1000BA3 /* personal-recommendations.json in Resources */,
+				C0F200000000000000000004 /* BCDThemes.json in Resources */,
 				A1000910 /* Assets.xcassets in Resources */,
 				B1000004 /* madeira-jit.js in Resources */,
 				B1000051 /* Madeira JIT.shortcut in Resources */,
@@ -1449,7 +1721,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Licence texts bundled with the converter must match their sources (staged by\n# build/madeira-d3d12/fetch-converter.sh); stale copies fail the build.\nfor pair in COPYING:LICENSE-MADEIRA-GPL-3.0.txt LICENSE-EXCEPTION.md:LICENSE-MADEIRA-EXCEPTION.txt LICENSE-BCD.md:LICENSE-BCD.txt; do\n  src=\"$SRCROOT/../${pair%%:*}\"; dst=\"$CODESIGNING_FOLDER_PATH/licenses/${pair##*:}\"\n  if [ ! -f \"$dst\" ] || ! cmp -s \"$src\" \"$dst\"; then echo \"error: bundled ${pair##*:} is missing or stale; run build/stage-licenses.sh\"; exit 1; fi\ndone\n# A loose dylib copied as a resource is sealed by the bundle\n# signature but is not itself re-signed, and dyld will not load code\n# whose own signature does not match. Sign it with whatever identity\n# this configuration resolved to, rather than hardcoding one.\nDYLIB=\"$CODESIGNING_FOLDER_PATH/d3d12/libmetalirconverter.dylib\"\n[ -f \"$DYLIB\" ] || exit 0\nif [ -n \"$EXPANDED_CODE_SIGN_IDENTITY\" ] && [ \"$CODE_SIGNING_ALLOWED\" != \"NO\" ]; then\n  codesign --force --sign \"$EXPANDED_CODE_SIGN_IDENTITY\" --timestamp=none \"$DYLIB\"\nelse\n  codesign --force --sign - \"$DYLIB\"\nfi\n";
+			shellScript = "# Licence texts bundled with the converter must match their sources (staged by\n# build/madeira-d3d12/fetch-converter.sh); stale copies fail the build.\nfor pair in COPYING:LICENSE-MADEIRA-GPL-3.0.txt LICENSE-EXCEPTION.md:LICENSE-MADEIRA-EXCEPTION.txt LICENSE-BCD.md:LICENSE-BCD.txt; do\n  src=\"$SRCROOT/../${pair%%:*}\"; dst=\"$CODESIGNING_FOLDER_PATH/licenses/${pair##*:}\"\n  if [ ! -f \"$dst\" ] || ! cmp -s \"$src\" \"$dst\"; then echo \"error: bundled ${pair##*:} is missing or stale; run build/stage-licenses.sh\"; exit 1; fi\ndone\n# A loose dylib copied as a resource is sealed by the bundle\n# signature but is not itself re-signed, and dyld will not load code\n# whose own signature does not match. Sign it with whatever identity\n# this configuration resolved to, rather than hardcoding one.\n# d3d12/ is the Metal Shader Converter; gl/ is Mesa OSMesa + MoltenVK (build/mesa-ios, build/moltenvk-ios), when this build has them.\nfor DYLIB in \"$CODESIGNING_FOLDER_PATH\"/d3d12/libmetalirconverter.dylib \"$CODESIGNING_FOLDER_PATH\"/gl/*.dylib; do\n  [ -f \"$DYLIB\" ] || continue\n  if [ -n \"$EXPANDED_CODE_SIGN_IDENTITY\" ] && [ \"$CODE_SIGNING_ALLOWED\" != \"NO\" ]; then\n    codesign --force --sign \"$EXPANDED_CODE_SIGN_IDENTITY\" --timestamp=none \"$DYLIB\"\n  else\n    codesign --force --sign - \"$DYLIB\"\n  fi\ndone\n";
 		};
 		A30000E2 /* Bundle Wine Mono */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -1501,6 +1773,9 @@
 				A1000B86 /* BCDUpdates.swift in Sources */,
 				A1000B87 /* BCDSettingsFeedback.swift in Sources */,
 				A1000BC1 /* BCDStyle.swift in Sources */,
+				C0F200000000000000000003 /* BCDSettingsAppearance.swift in Sources */,
+				C0F200000000000000000002 /* BCDTheme.swift in Sources */,
+				C0F200000000000000000001 /* BCDThemeCore.swift in Sources */,
 				A1000BC2 /* BCDSetupView.swift in Sources */,
 				A1000B10 /* BCDStore.swift in Sources */,
 				A1000B11 /* BCDFocus.swift in Sources */,
@@ -1534,7 +1809,11 @@
 				A1005603 /* BCDFoldableSettings.swift in Sources */,
 				A1005604 /* BCDFoldableUI.swift in Sources */,
 				A1004103 /* BCDGraphicsRoutes.c in Sources */,
+				A10041A1 /* BCDJapanese.c in Sources */,
 				A1000602 /* SteamDownloadBackground.swift in Sources */,
+				A1008B01 /* BackgroundRun.swift in Sources */,
+				A1008B02 /* Winios/MetalBackgroundGate.m in Sources */,
+				A1008B03 /* Winios/BackgroundCPUCap.c in Sources */,
 				A1000600 /* SteamInstall.swift in Sources */,
 				A1000609 /* SwiftSteam/Content/ContentDecryptor.swift in Sources */,
 				A100060A /* SwiftSteam/Content/DepotDownloader.swift in Sources */,
@@ -1553,11 +1832,30 @@
 				A1000C0C /* BCDGOG/BCDGOGInstall.swift in Sources */,
 				A1000C0D /* BCDGOG/BCDGOG.swift in Sources */,
 				A1000C0E /* BCDGOG/BCDLiveStoreGOG.swift in Sources */,
+				A1000C20 /* BCDGOG/GOGInstallScript.swift in Sources */,
+				A1000C21 /* BCDGOG/BCDGOGRegistry.swift in Sources */,
+				A1000C22 /* BCDGOG/GOGSetup.swift in Sources */,
+				A1000C23 /* BCDGOG/BCDGOGUpdate.swift in Sources */,
+				A1000C24 /* BCDGOG/BCDGOGContentV1.swift in Sources */,
+				A100E611 /* BCDGOG/Galaxy/GalaxyWire.swift in Sources */,
+				A100E612 /* BCDGOG/Galaxy/GalaxyService.swift in Sources */,
+				A100E613 /* BCDGOG/Galaxy/GalaxyListener.swift in Sources */,
+				A100E614 /* BCDGOG/Galaxy/BCDGOGGalaxyCore.swift in Sources */,
+				A100E615 /* BCDGOG/Galaxy/BCDGOGGalaxy.swift in Sources */,
+				A100E616 /* BCDGOG/Galaxy/BCDGamePageLiveGalaxy.swift in Sources */,
 				A1000DA0 /* BCDGameDLC.swift in Sources */,
 				A1000DA1 /* BCDSteamDLC/BCDSteamDLC.swift in Sources */,
 				A1000DA2 /* BCDSteamDLC/BCDSteamDLCDownload.swift in Sources */,
 				A1000DA3 /* BCDSteamDLC/BCDSteamDLCService.swift in Sources */,
 				A1000DA4 /* BCDSteamDLC/BCDGamePageLiveDLC.swift in Sources */,
+				A1000C70 /* BCDGameVersion.swift in Sources */,
+				A1000C71 /* BCDSteamBranches/BCDGamePageLiveVersion.swift in Sources */,
+				A1000C80 /* BCDWorkshop.swift in Sources */,
+				A1000C81 /* BCDWorkshopView.swift in Sources */,
+				A1000C82 /* BCDSteamWorkshop/BCDWorkshopLive.swift in Sources */,
+				A1000C83 /* BCDSteamWorkshop/SteamWorkshopFiles.swift in Sources */,
+				A1000C84 /* BCDSteamWorkshop/SteamWorkshopModel.swift in Sources */,
+				A1000C90 /* SwiftSteam/Content/SteamLANPeer.swift in Sources */,
 				D3C0DF01 /* BCDGameSaves.swift in Sources */,
 				D3C0DF02 /* BCDSaveBackups/GameSaveRules.swift in Sources */,
 				D3C0DF03 /* BCDSaveBackups/GameSaveBackups.swift in Sources */,
@@ -1599,6 +1897,30 @@
 				A1000F52 /* BCDEpic/BCDEpicCredentials.swift in Sources */,
 				A1000F53 /* BCDEpic/BCDEpicAudit.swift in Sources */,
 				A1000F54 /* BCDEpic/BCDEpicStart.swift in Sources */,
+				A1000F5A /* BCDEpic/EpicFormats.swift in Sources */,
+				A1000F5B /* BCDEpic/EpicCloudSaves.swift in Sources */,
+				A1000F5C /* BCDEpic/BCDEpicCloudCore.swift in Sources */,
+				A1000F5D /* BCDEpic/BCDEpicCloud.swift in Sources */,
+				A1000F5E /* BCDEpic/BCDGamePageLiveCloud.swift in Sources */,
+				A1F73001 /* SwiftItch/ItchAPI.swift in Sources */,
+				A1F73002 /* SwiftItch/ItchArchive.swift in Sources */,
+				A1F73003 /* SwiftItch/ItchInstall.swift in Sources */,
+				A1F73004 /* SwiftItch/ItchLibrary.swift in Sources */,
+				A1F73005 /* SwiftItch/itch_7z.c in Sources */,
+				A1F73007 /* BCDItch/BCDLiveStoreItch.swift in Sources */,
+				A1F73008 /* BCDItch/BCDItchViews.swift in Sources */,
+				A1F74001 /* SwiftEA/EAAPI.swift in Sources */,
+				A1F74002 /* SwiftEA/EADownloader.swift in Sources */,
+				A1F74003 /* SwiftEA/EAFormats.swift in Sources */,
+				A1F74004 /* SwiftEA/EALicense.swift in Sources */,
+				A1F75001 /* BCDStores/BCDStoreCards.swift in Sources */,
+				A1F74005 /* SwiftEA/EAService.swift in Sources */,
+				A1F74006 /* SwiftEA/EALibrary.swift in Sources */,
+				A1F74007 /* SwiftEA/EARegistry.swift in Sources */,
+				A1F74008 /* BCDEA/BCDEAMachine.swift in Sources */,
+				A1F74009 /* BCDEA/BCDEAMachineLive.swift in Sources */,
+				A1F7400A /* BCDEA/BCDLiveStoreEA.swift in Sources */,
+				A1F7400B /* BCDEA/BCDEAViews.swift in Sources */,
 				A1000FB5 /* BCDGeckoSection.swift in Sources */,
 				A1000FB4 /* BCDGecko.swift in Sources */,
 				A1000BA4 /* BCDNWJS64.swift in Sources */,
@@ -1640,6 +1962,14 @@
 				A1000245 /* TouchGamepad.swift in Sources */,
 				A1000246 /* TouchControlPresets.swift in Sources */,
 				A1000BD0 /* BCDTouchCore.swift in Sources */,
+				A1F56018 /* BCDExplain.swift in Sources */,
+				A1F56017 /* BCDAmazon/BCDAmazonViews.swift in Sources */,
+				A1F56016 /* BCDAmazon/BCDLiveStoreAmazon.swift in Sources */,
+				A1F56015 /* SwiftAmazon/AmazonLibrary.swift in Sources */,
+				A1F56014 /* SwiftAmazon/AmazonAPI.swift in Sources */,
+				A1F56013 /* SwiftAmazon/AmazonAuth.swift in Sources */,
+				A1F56012 /* SwiftAmazon/AmazonManifest.swift in Sources */,
+				A1F5600F /* BCDFloatingStick.swift in Sources */,
 				A1000BD1 /* BCDTouchControls.swift in Sources */,
 				A1000BD2 /* BCDTouchLayouts.swift in Sources */,
 				A1000BD3 /* BCDTouchEditor.swift in Sources */,
@@ -1709,11 +2039,25 @@
 				A1005113 /* BCDDebugLive.swift in Sources */,
 				A1005114 /* BCDPauseLive.swift in Sources */,
 				A1005115 /* BCDMenuMore.swift in Sources */,
+				A1F56001 /* BCDFrameGen.swift in Sources */,
+				A1F56002 /* BCDFrameGenLive.swift in Sources */,
+				A1F56003 /* BCDPresentFX.swift in Sources */,
+				A1F56004 /* BCDPresentFXLive.swift in Sources */,
+				A1F56005 /* BCDLossless.swift in Sources */,
+				A1F56007 /* BCDVTInterp.swift in Sources */,
+				A1F56009 /* BCDSchedHints.swift in Sources */,
+				A1F5600C /* BCDDriveSpeed.swift in Sources */,
+				A1F5600D /* BCDPadAuto.swift in Sources */,
+				A1F56006 /* BCDLosslessLive.swift in Sources */,
+				A1F56008 /* BCDVTInterpLive.swift in Sources */,
+				A1F5600A /* BCDSchedHintsLive.swift in Sources */,
+				A1F5600E /* BCDPadAutoLive.swift in Sources */,
 				A1005116 /* BCDPhoneRumble.m in Sources */,
 				A1005118 /* BCDPauseGate.c in Sources */,
 				A1004711 /* BCDGPUCardsLive.swift in Sources */,
 				A1005417 /* ExternalGamesPicker.swift in Sources */,
 				A1004710 /* BCDGPUCards.swift in Sources */,
+				A1004801 /* BCDOpenGL.swift in Sources */,
 				A1004703 /* BCDExtraKeysLive.swift in Sources */,
 				A1004702 /* BCDExtraKeyBar.swift in Sources */,
 				A1004701 /* BCDExtraKeys.swift in Sources */,
@@ -1735,9 +2079,11 @@
 				A1000915 /* AutoTune.swift in Sources */,
 				A1000916 /* AutoTuneCore.swift in Sources */,
 				A1000917 /* AutoTuneViews.swift in Sources */,
+				A1F56010 /* AutoTuneAsk.swift in Sources */,
 				A1000918 /* AutoTuneRules.generated.swift in Sources */,
 				A1000920 /* LogUpload.swift in Sources */,
 				A1000921 /* LogUploadCore.swift in Sources */,
+				A1F56011 /* BCDLogThin.swift in Sources */,
 				A1000FE0 /* FeedbackUpload.swift in Sources */,
 				A1000FE1 /* FeedbackUploadCore.swift in Sources */,
 				A1F5500C /* BCDControlShareLive.swift in Sources */,
@@ -1754,7 +2100,11 @@
 				A1F55001 /* BCDPerfTraceCore.swift in Sources */,
 				A1000913 /* DockReset.swift in Sources */,
 				A1000F90 /* DockGameEnd.swift in Sources */,
+				A100E601 /* DockFriends.swift in Sources */,
+				A100E602 /* DockFriendsMenu.swift in Sources */,
 				A1000209 /* StorageModel.swift in Sources */,
+				A1E46401 /* ExternalDrives.swift in Sources */,
+				A1E46402 /* ExternalStorage.swift in Sources */,
 				A1000211 /* SavesAndShortcuts.swift in Sources */,
 				A1000400 /* Library.swift in Sources */,
 				A1000401 /* GuestDisplay.swift in Sources */,
@@ -1763,10 +2113,12 @@
 				A1000006 /* FEXBridge.mm in Sources */,
 				A1000020 /* WineServerBridge.m in Sources */,
 				A1000030 /* WineProcessBridge.m in Sources */,
+				A1F5600B /* BCDSchedHints.m in Sources */,
 				A1000033 /* wine_stubs.c in Sources */,
 				A1000041 /* PrefixExtractor.c in Sources */,
 				A1000050 /* IOSDisplayShim.m in Sources */,
 				A1000070 /* Winios/Winios.m in Sources */,
+				A1000701 /* Winios/WiniosGL.m in Sources */,
 				A1000247 /* PadOutput.m in Sources */,
 				A1000035 /* StikJITHelper.swift in Sources */,
 				B1000001 /* JITSetup.swift in Sources */,
@@ -1876,6 +2228,7 @@
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphoneos27.*]" = "$(inherited) DEBUG BCD_SDK_IOS27_1";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
@@ -1903,6 +2256,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				"SWIFT_ACTIVE_COMPILATION_CONDITIONS[sdk=iphoneos27.*]" = "$(inherited) BCD_SDK_IOS27_1";
 				SWIFT_COMPILATION_MODE = wholemodule;
 				VALIDATE_PRODUCT = YES;
 			};

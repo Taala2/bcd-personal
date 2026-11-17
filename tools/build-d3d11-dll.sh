@@ -15,7 +15,9 @@
 #
 # Upstream's d3d11.dll stays the default for every game. WineProcessBridge.m
 # links d3d11-src.dll in as C:\windows\system32\d3d11.dll (and sysx64) only
-# when env.MADEIRA_D3D11_SRC = 1 is set (the game's own file, or bcd.cfg).
+# when env.MADEIRA_D3D11_SRC = 1 is set (the game's own file, or bcd.cfg), or
+# env.MADEIRA_DXMT_FRESH = 1, which links the whole fresh 64-bit DXMT set
+# (this DLL, dxgi-src.dll, d3d10core-src.dll and winemetal-src.dll).
 #
 # madeira-bcd: the DXMT core (dxmt/src/dxmt) is compiled from a copy too, with
 # small staging rings for the programs env.DXMT_SMALL_RINGS names
@@ -46,6 +48,13 @@
 #                   compiler is needed and the embedded library is exactly
 #                   upstream's. With xcrun (macOS CI) the .metal is also
 #                   compiled and compared, as information.
+#   dxmt_command_fresh.h  madeira-bcd (2026-11-15): the copy's dxmt_command.metal
+#                   (the pin's: the GS/TS marshal fix among it) compiled with the
+#                   flags of DXMT's meson build and build/dxmt-ios/build.sh; the
+#                   copy's dxmt_command.cpp loads it instead of upstream's library
+#                   only when the process has MADEIRA_DXMT_FRESH=1
+#                   (tools/patch-d3d11-src-metallib.py). The recipe DLL below
+#                   never includes it.
 # The airconv shader headers (air_msad.h, ...) are not needed: d3d11 only
 # includes airconv's headers (airconv_forward_dep), it compiles none of it.
 #
@@ -113,11 +122,41 @@ done
 #   tools/patch-dxmt-srv-getdesc-mips.py      Dark Souls III (an SRV's GetDesc reports the real mip count, [srv-getdesc]; round 624)
 #   tools/patch-dxmt-d11-query-stuck.py       WRC 9 ([query-stuck], DXMT_QUERY_TS_WATCHDOG; round 624: build 624's first IPA lacked it here)
 #   tools/patch-dxmt-tess-pso-failed.py       Batman: Arkham City (a mesh pipeline that did not compile: its draws dropped, [mesh-skip] ml870; round 626)
+#   tools/patch-dxmt-update-subresource-staging.py  FIFA 23 (UpdateSubresource on a STAGING buffer is dropped, [update-subresource-staging]; night round 2026-11-11)
+#   tools/patch-dxmt-d11-swapchain-rotation.py      The Battle for Wesnoth / SDL2 (IDXGISwapChain1::SetRotation/GetRotation answer the identity rotation, [swapchain-rotation])
+#   tools/patch-dxmt-texture-limit.py         The Witness, Tomb Raider, Transformers, Danganronpa (a texture over Direct3D 11's limits gets E_INVALIDARG, [dxmt-tex-limit])
+#   tools/patch-dxmt-layer-format.py          LEGO City Undercover (a back buffer format CAMetalLayer refuses, 0 among them, presents into BGRA8Unorm
+#                                             instead of ending the app with CAMetalLayerInvalid, [layer-format]; round 660: the 32-bit DLLs had it
+#                                             since build 559, a 64-bit game never did)
+#   tools/patch-dxmt-view-private-ref.py      Hatred (opt-in, env.MADEIRA_VIEW_PRIVATE_REF = 1: a view holds its resource with a private reference, [view-ref])
+#   tools/patch-dxmt-lsfg.py                  Lossless Scaling frame generation (opt-in: only with MADEIRA_LSFG_CTL, which the app sets for a game's `lossless-scaling` line; [lsfg])
+# madeira-bcd (2026-11-15, owner's decision: every Direct3D 10/11 fix d3d11-src.dll lacked; the audit of the CI-only DXMT patches):
+#   tools/patch-dxmt-wsi-tiny-fullscreen.py   a fullscreen swapchain's window under 160x120 gets the monitor's size ([wsi-fullscreen]; American
+#                                             Truck Simulator, build 576). Its code is in util, which no binary that calls it compiled: the
+#                                             i386 build uses wsi_window_win32.cpp, this DLL compiled util from the pristine submodule. The copy
+#                                             holds src/util now, and this DLL links the copy's util (the recipe DLL keeps the submodule's).
+#   tools/patch-dxmt-d3d11-fault-info.py      opt-in diagnostic, env.MADEIRA_DXMT_FAULT_INFO = 1: labelled encoders and [fault-enc] after a GPU
+#                                             fault, written for GTA V Legacy (64-bit) and never in its d3d11.dll (the reader is #ifndef __i386__).
+#                                             It also edits winemetal_unix.c, so the copy holds src/winemetal (only that edit lands there; this
+#                                             DLL compiles nothing of it and includes the submodule's winemetal headers).
+#   tools/patch-d3d11-src-all-arch.py         the 25 `#if defined(__i386__)` gates of dxmt 1b4f3dc opened: short constant buffers read 0 past
+#                                             their end ([cb-short]), 16-bit index ranges at 2 mod 4 realigned ([idx-align]; env.MADEIRA_IDX_REALIGN
+#                                             = 0 turns it off) and the [vb-align] census, as every 32-bit Direct3D 10/11 game has them. Last, so
+#                                             every other script found its anchors first.
 BCD_PATCHES=("patch-dxmt-copy-structure-count.py" "[copy-structure-count] skipped #"
              "patch-dxmt-buffer-rtv.py" "[rtv-fail] #"
              "patch-dxmt-srv-getdesc-mips.py" "[srv-getdesc] madeira-bcd #"
              "patch-dxmt-d11-query-stuck.py" "[query-stuck] madeira-bcd query="
-             "patch-dxmt-tess-pso-failed.py" "[mesh-skip] ml870 ")
+             "patch-dxmt-tess-pso-failed.py" "[mesh-skip] ml870 "
+             "patch-dxmt-update-subresource-staging.py" "[update-subresource-staging] skipped #"
+             "patch-dxmt-d11-swapchain-rotation.py" "[swapchain-rotation] madeira-bcd: SetRotation("
+             "patch-dxmt-texture-limit.py" "[dxmt-tex-limit] CreateTexture2D refused "
+             "patch-dxmt-layer-format.py" "[layer-format] madeira-bcd: back buffer format "
+             "patch-dxmt-view-private-ref.py" "[view-ref] madeira-bcd #"
+             "patch-dxmt-lsfg.py" "[lsfg] madeira-bcd "
+             "patch-dxmt-wsi-tiny-fullscreen.py" "[wsi-fullscreen] a fullscreen swapchain"
+             "patch-dxmt-d3d11-fault-info.py" "[fault-enc] madeira-bcd frame "
+             "patch-d3d11-src-all-arch.py" "[cb-short] madeira-bcd #")
 SHIP_HAS_BCD=1
 for ((i = 1; i < ${#BCD_PATCHES[@]}; i += 2)); do
     LC_ALL=C grep -aqF "${BCD_PATCHES[$i]}" "$SHIP/d3d11.dll" || SHIP_HAS_BCD=0
@@ -219,6 +258,9 @@ grep -q "madeira-bcd: context state swap" "$OUT/tree/src/d3d11/d3d11_context_imp
 # not cost every game d3d11-src.dll: the copy is left unpatched and the build
 # goes on.
 cp -R "$D/src/dxmt" "$OUT/tree/src/"
+# madeira-bcd (2026-11-15): util too (patch-dxmt-wsi-tiny-fullscreen.py; this DLL links the copy's util, the recipe DLL the
+# submodule's), and winemetal as the target of patch-dxmt-d3d11-fault-info.py's unix-side edit (nothing of it is compiled here).
+cp -R "$D/src/util" "$D/src/winemetal" "$OUT/tree/src/"
 SMALL_RINGS=" + opt-in small staging rings"
 python3 "$R/tools/patch-d3d11-src-small-rings.py" "$OUT/tree/src/dxmt" || {
     SMALL_RINGS=""
@@ -235,6 +277,40 @@ for ((i = 0; i < ${#BCD_PATCHES[@]}; i += 2)); do
     (cd "$OUT/patchroot" && python3 "$R/tools/${BCD_PATCHES[$i]}") || fail "tools/${BCD_PATCHES[$i]} did not apply to the copy"
     BCD_NOTE="$BCD_NOTE + ${BCD_PATCHES[$i]%.py}"
 done
+# madeira-bcd (Porthole port, item 1): the Lossless Scaling bridge for Direct3D 12 games (tools/patch-d3d11-src-lsfg-bridge.py:
+# d3d11_lsfg_bridge.cpp, a fence whose shared event is handed out, three exports), on the copy only: the 32-bit d3d11.dll never gets
+# it (Direct3D 12 games are 64-bit) and upstream's d3d11.dll does not have it. It needs patch-dxmt-lsfg.py's d3d11_lsfg.hpp, applied
+# just above. Opt-in per game, so a missed anchor must not cost every game d3d11-src.dll: the copy is then left without the bridge
+# (a Direct3D 12 game gets no generated frames; Direct3D 11 games are not affected) and the build goes on.
+LSFG_BRIDGE=1
+PATCHED_DEF="$OUT/tree/src/d3d11/d3d11.def"
+python3 "$R/tools/patch-d3d11-src-lsfg-bridge.py" "$OUT/tree/src/d3d11" || {
+    LSFG_BRIDGE=0
+    PATCHED_DEF="$D/src/d3d11/d3d11.def"
+    rm -f "$OUT/tree/src/d3d11/d3d11_lsfg_bridge.cpp"
+    echo "::warning::tools/patch-d3d11-src-lsfg-bridge.py did not apply: d3d11-src.dll is built without the Lossless Scaling bridge for Direct3D 12 games"
+}
+[ "$LSFG_BRIDGE" = 1 ] && BCD_NOTE="$BCD_NOTE + patch-d3d11-src-lsfg-bridge"
+# madeira-bcd (2026-11-15): DXMT's internal shaders compiled from the copy's dxmt_command.metal (the pin's: the GS/TS marshal fix
+# d811847f among them) with the Metal flags of DXMT's meson build and build/dxmt-ios/build.sh, embedded as dxmt_command_fresh next to
+# upstream's library (dxmt_command, above) and loaded instead of it only when the process has MADEIRA_DXMT_FRESH=1
+# (tools/patch-d3d11-src-metallib.py on the copy's dxmt_command.cpp; WineProcessBridge.m sets the variable when it linked the fresh
+# set). Without a Metal compiler, or if the patch does not apply, the copy is left alone and the build goes on: a session with the
+# key then gets upstream's library (the DLL says which in its [dxmt-shaders] line only when the patch is in).
+FRESH_SHADERS=0
+DXMT_METAL_STD="${DXMT_METAL_STD:-metal3.1}"
+if command -v xcrun > /dev/null 2>&1 \
+        && (cd "$OUT/gen" && xcrun -sdk macosx metal -std="$DXMT_METAL_STD" --target=air64-apple-macos14.0 \
+                -o dxmt_command_fresh.air -c "$OUT/tree/src/dxmt/dxmt_command.metal" \
+            && xcrun -sdk macosx metallib -o dxmt_command_fresh.metallib dxmt_command_fresh.air \
+            && xxd -n dxmt_command_fresh -i dxmt_command_fresh.metallib dxmt_command_fresh.h) > "$OUT/gen/metal-fresh.log" 2>&1 \
+        && python3 "$R/tools/patch-d3d11-src-metallib.py" "$OUT/tree/src/dxmt/dxmt_command.cpp"; then
+    FRESH_SHADERS=1
+    BCD_NOTE="$BCD_NOTE + patch-d3d11-src-metallib ($(wc -c < "$OUT/gen/dxmt_command_fresh.metallib" | tr -d ' ') bytes, -std=$DXMT_METAL_STD)"
+else
+    tail -5 "$OUT/gen/metal-fresh.log" 2> /dev/null || true
+    echo "::warning::DXMT's internal shaders were not compiled from the pin (no Metal compiler, or tools/patch-d3d11-src-metallib.py did not apply): d3d11-src.dll embeds upstream's library only, and env.MADEIRA_DXMT_FRESH = 1 gets that one"
+fi
 
 # DXMT's meson.build: compiler_args, the project defines, buildtype=release
 # (-O3, b_ndebug=if-release -> NDEBUG), C++20. -fmacro-prefix-map maps the
@@ -265,10 +341,10 @@ job() { printf '%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" >> "$OUT/jobs"; }
 compile_one() {  # compile_one <root> <source> <object> <flag set>
     local root="$1" src="$2" obj="$3" set="$4" inc
     case "$set" in
-        util)   inc=("${INC_UTIL[@]}") ;;
+        util)   inc=(-I"$root/src/util" "${INC_BASE[@]}") ;;   # madeira-bcd (2026-11-15): the root's util ($U for the recipe DLL)
         parser) inc=("${INC_PARSER[@]}" -Wno-extern-c-compat -Wno-unknown-pragmas) ;;
-        dxmt)   inc=(-I"$root/src/dxmt" "${INC_DXMT[@]}") ;;
-        d3d11)  inc=(-I"$root/src/d3d11" -I"$G" -I"$root/src/dxmt" -I"$D/src/airconv" -I"$D/src/winemetal" -I"$U" "${INC_BASE[@]}" -I"$OUT/gen") ;;
+        dxmt)   inc=(-I"$root/src/dxmt" -I"$root/src/util" "${INC_DXMT[@]}") ;;
+        d3d11)  inc=(-I"$root/src/d3d11" -I"$G" -I"$root/src/dxmt" -I"$D/src/airconv" -I"$D/src/winemetal" -I"$root/src/util" "${INC_BASE[@]}" -I"$OUT/gen") ;;
     esac
     case "$src" in
         *.c) "$CC" "${CFLAGS[@]}" -fmacro-prefix-map="$root/=" -fmacro-prefix-map="$D/=" "${inc[@]}" -c "$src" -o "$obj" ;;
@@ -323,9 +399,10 @@ D3D11_SRC=(d3d11/d3d11_class_linkage d3d11/d3d11_device d3d11/d3d11_input_layout
            d3d10/d3d10_texture d3d10/d3d10_util d3d10/d3d10_view)
 obj_name() { echo "$1" | tr '/.' '__'; }
 
-UTIL_OBJ=(); DXMT_OBJ=(); PLAIN_DXMT_OBJ=(); PARSER_OBJ=(); PLAIN_OBJ=(); PATCHED_OBJ=()
-for s in "${UTIL_SRC[@]}"; do
-    o="$OUT/obj/util_$(obj_name "$s").o"; job "$D" "$U/$s" "$o" util; UTIL_OBJ+=("$o")
+UTIL_OBJ=(); PLAIN_UTIL_OBJ=(); DXMT_OBJ=(); PLAIN_DXMT_OBJ=(); PARSER_OBJ=(); PLAIN_OBJ=(); PATCHED_OBJ=()
+for s in "${UTIL_SRC[@]}"; do   # madeira-bcd (2026-11-15): the submodule's util for the recipe DLL, the copy's for d3d11-src.dll
+    o="$OUT/plain/obj/util_$(obj_name "$s").o"; job "$D" "$U/$s" "$o" util; PLAIN_UTIL_OBJ+=("$o")
+    o="$OUT/obj/util_$(obj_name "$s").o"; job "$OUT/tree" "$OUT/tree/src/util/$s" "$o" util; UTIL_OBJ+=("$o")
 done
 for s in "${DXMT_SRC[@]}"; do
     o="$OUT/plain/obj/dxmt_$s.o"; job "$D" "$X/$s.cpp" "$o" dxmt; PLAIN_DXMT_OBJ+=("$o")
@@ -338,12 +415,16 @@ for s in "${D3D11_SRC[@]}"; do
     o="$OUT/plain/obj/$(obj_name "$s").o"; job "$D" "$D/src/$s.cpp" "$o" d3d11; PLAIN_OBJ+=("$o")
     o="$OUT/obj/$(obj_name "$s").o"; job "$OUT/tree" "$OUT/tree/src/$s.cpp" "$o" d3d11; PATCHED_OBJ+=("$o")
 done
+if [ "$LSFG_BRIDGE" = 1 ]; then   # madeira-bcd: the Lossless Scaling bridge, in d3d11-src.dll only
+    o="$OUT/obj/d3d11_d3d11_lsfg_bridge.o"; job "$OUT/tree" "$OUT/tree/src/d3d11/d3d11_lsfg_bridge.cpp" "$o" d3d11; PATCHED_OBJ+=("$o")
+fi
 echo "compiling $(wc -l < "$OUT/jobs" | tr -d ' ') files, $JOBS at a time"
 run_jobs
 "$WINDRES" -i "$D/src/d3d11/version.rc" -o "$OUT/obj/version.o" 2>> "$OUT/build.err" || fail "windres version.rc failed"
 
 # Thin archives in source order, as meson makes them ("csrDT"); the DXMT core
 # twice, the submodule's for the unpatched DLL and the copy's for d3d11-src.dll.
+"$AR" csrDT "$OUT/plain/libutil.a" "${PLAIN_UTIL_OBJ[@]}"
 "$AR" csrDT "$OUT/libutil.a" "${UTIL_OBJ[@]}"
 "$AR" csrDT "$OUT/plain/libdxmt.a" "${PLAIN_DXMT_OBJ[@]}"
 "$AR" csrDT "$OUT/libdxmt.a" "${DXMT_OBJ[@]}"
@@ -353,21 +434,32 @@ run_jobs
 # file, the dependency libraries in d3d11's dependency order (dxgi, DXBCParser,
 # dxmt, winemetal, util), util_dep's -lntdll, -static (libc++ in, UCRT through
 # api-ms-win-crt-*), file alignment 4096 and meson's default Windows libraries.
-link_dll() {  # link_dll <output> <libdxmt.a> <objects...>
-    local out="$1" dxmt="$2"; shift 2
-    "$CXX" -shared -o "$out" "$@" "$OUT/obj/version.o" "$D/src/d3d11/d3d11.def" \
-        "$OUT/libdxgi.a" "$OUT/libDXBCParser.a" "$dxmt" -L"$OUT" -lwinemetal "$OUT/libutil.a" -lntdll \
+link_dll() {  # link_dll <output> <libdxmt.a> <module definition file> <objects...>
+    local out="$1" dxmt="$2" def="$3"; shift 3
+    local util="${dxmt%/libdxmt.a}/libutil.a"   # madeira-bcd (2026-11-15): plain/libutil.a (the submodule's util) beside plain/libdxmt.a
+    "$CXX" -shared -o "$out" "$@" "$OUT/obj/version.o" "$def" \
+        "$OUT/libdxgi.a" "$OUT/libDXBCParser.a" "$dxmt" -L"$OUT" -lwinemetal "$util" -lntdll \
         -static -Wl,--file-alignment=4096 \
         -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32 \
         2>> "$OUT/build.err" || { grep -m 20 "error" "$OUT/build.err"; fail "linking $(basename "$out") failed"; }
 }
-link_dll "$OUT/plain/d3d11.dll" "$OUT/plain/libdxmt.a" "${PLAIN_OBJ[@]}"
-link_dll "$OUT/d3d11.dll" "$OUT/libdxmt.a" "${PATCHED_OBJ[@]}"
+link_dll "$OUT/plain/d3d11.dll" "$OUT/plain/libdxmt.a" "$D/src/d3d11/d3d11.def" "${PLAIN_OBJ[@]}"
+link_dll "$OUT/d3d11.dll" "$OUT/libdxmt.a" "$PATCHED_DEF" "${PATCHED_OBJ[@]}"   # madeira-bcd: the copy's d3d11.def names the bridge's exports
 
 # The new DLL must export exactly what upstream's does, and import from the
 # same DLLs (DXGI.DLL, winemetal.dll, the system and UCRT ones).
 exports "$SHIP/d3d11.dll" > "$OUT/exports.upstream"
-exports "$OUT/d3d11.dll" > "$OUT/exports.built"
+# madeira-bcd: except the Lossless Scaling bridge's three (tools/patch-d3d11-src-lsfg-bridge.py), which must be there with the
+# bridge and absent without it.
+exports "$OUT/d3d11.dll" > "$OUT/exports.built.all"
+grep -vxE 'DXMTLsfg(Begin|Run|Abort)' "$OUT/exports.built.all" > "$OUT/exports.built"
+BRIDGE_EXPORTS=$(grep -cxE 'DXMTLsfg(Begin|Run|Abort)' "$OUT/exports.built.all" || true)
+if [ "$LSFG_BRIDGE" = 1 ]; then
+    [ "$BRIDGE_EXPORTS" = 3 ] || fail "the Lossless Scaling bridge's three exports are not in the result ($BRIDGE_EXPORTS of 3)"
+    LC_ALL=C grep -aqF "[lsfg] (Direct3D 12 bridge)" "$OUT/d3d11.dll" || fail "the Lossless Scaling bridge is not in the result"
+else
+    [ "$BRIDGE_EXPORTS" = 0 ] || fail "the result exports the Lossless Scaling bridge although its patch did not apply"
+fi
 [ -s "$OUT/exports.upstream" ] || fail "could not read the exports of the committed d3d11.dll"
 diff "$OUT/exports.upstream" "$OUT/exports.built" > "$OUT/exports.diff" \
     || { cat "$OUT/exports.diff"; fail "its exports differ from the committed d3d11.dll"; }
@@ -394,6 +486,15 @@ for ((i = 1; i < ${#BCD_PATCHES[@]}; i += 2)); do
         fail "the unpatched build carries \"${BCD_PATCHES[$i]}\": the submodule is not pristine"
     fi
 done
+# madeira-bcd (2026-11-15): tools/patch-d3d11-src-all-arch.py opens three fixes at once; the loop above checked the first one's marker.
+for m in "[idx-align] madeira-bcd" "[vb-align] madeira-bcd slot"; do
+    LC_ALL=C grep -aqF "$m" "$OUT/d3d11.dll" || fail "tools/patch-d3d11-src-all-arch.py's \"$m\" is not in the result"
+    LC_ALL=C grep -aqF "$m" "$OUT/plain/d3d11.dll" && fail "the unpatched build carries \"$m\": the 64-bit build compiled the i386-only code"
+done
+if [ "$FRESH_SHADERS" = 1 ]; then
+    LC_ALL=C grep -aqF "[dxmt-shaders] madeira-bcd" "$OUT/d3d11.dll" || fail "the [dxmt-shaders] switch is not in the result"
+    LC_ALL=C grep -aqF "[dxmt-shaders] madeira-bcd" "$OUT/plain/d3d11.dll" && fail "the unpatched build carries the [dxmt-shaders] switch"
+fi
 LC_ALL=C grep -aqF "$VER" "$OUT/d3d11.dll" || fail "the DXMT version string is not in the result"
 
 # The recipe check: the unpatched link against upstream's binary. Same

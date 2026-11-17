@@ -1,3 +1,5 @@
+/* Portions copyright 2026 Taala2: the sequence numbers, the nw.dll priority budget, [TLS_CLEAR_DONE] and the read-back are from
+ * thebcd69/bcd-games pull request #33 (2026-10-30); modified by BCD (thebcd69), 2026-11-11: they run only with MADEIRA_TLS_DIAG=1. */
 /* ajan7-arkham (2026-10-21): TlsFree reaches into OTHER pseudo-processes' threads. A log line for it, and an opt-in switch.
  *
  * Wine's TlsFree(index) ends in NtSetInformationThread(ThreadZeroTlsCell), whose unix side (virtual_clear_tls_index) clears
@@ -17,12 +19,17 @@
  * refutation in the next log, and MADEIRA_TLS_CLEAR_OWN_PROCESS=1 is the keyed attempt.
  *
  * What this header holds (nothing in it writes to a TEB):
- *   - ios_tls_clear_own_process_only(): MADEIRA_TLS_CLEAR_OWN_PROCESS, read once. Unset or anything but "1": the old behaviour, a
- *     TlsFree clears the cell in every thread of the session. "1": only in threads whose PEB is the caller's.
+ *   - ios_tls_clear_own_process_only(): MADEIRA_TLS_CLEAR_OWN_PROCESS, read once. Night round 2026-11-11 (report G1 S4; Assassin's Creed BCC21F,
+ *     the same mechanism as the Rockstar Launcher and Batman: Arkham City): ON BY DEFAULT. Only "0" gives the old behaviour, a TlsFree
+ *     that clears the cell in every thread of the session; unset or anything else: only in threads whose PEB is the caller's, as on Windows
+ *     (in a Windows process the other programs' threads are never in that process's list). A TlsFree whose victim thread belongs to another
+ *     process is the only case that changes; an unknown PEB on either side is never foreign (see ios_tls_clear_is_foreign).
  *   - ios_tls_clear_is_foreign(): the victim thread belongs to another process (both PEBs known and different).
  *   - ios_tls_clear_note(): the [tls-cross-clear] line, for a foreign thread whose cell was NOT zero (a live value). At most 40
- *     lines per run for victims without nw.dll; a victim process with nw.dll has its own budget (IOS_TLS_CROSS_PRIO_LINES). Every line
- *     carries a seq= and t= (monotonic) shared with the [nw-tls] AV report. Printed by default (log only); with the switch on it says "kept" instead of "cleared".
+ *     lines per run (the line of builds 579 to 651). With MADEIRA_TLS_DIAG=1 (ios_tls_diag_util.h) the line is the extended one: victims
+ *     without nw.dll keep that budget, a victim process with nw.dll has its own (IOS_TLS_CROSS_PRIO_LINES), and every line carries a seq=
+ *     and t= (monotonic) shared with the [nw-tls] AV report and [TLS_CLEAR_DONE]. Printed by default (log only); with the switch on it
+ *     says "kept" instead of "cleared".
  */
 #ifndef IOS_TLS_CLEAR_H
 #define IOS_TLS_CLEAR_H
@@ -38,7 +45,7 @@ static int ios_tls_clear_own_process_only( void )
     if (mode < 0)
     {
         const char *e = getenv( "MADEIRA_TLS_CLEAR_OWN_PROCESS" );
-        mode = e && e[0] == '1' && !e[1];
+        mode = !(e && e[0] == '0' && !e[1]);   /* night round 2026-11-11 (G1 S4): on unless "0" */
     }
     return mode;
 }
@@ -108,10 +115,28 @@ static void ios_tls_clear_note( struct ios_tls_clear_pass *pass, struct ios_tls_
                                 unsigned long long old )
 {
     static volatile int lines, plines;
-    int n, prio = ios_tls_clear_victim_has_nw( pass, victim_peb );
+    int n, prio;
     unsigned long long seq, t;
     int cbit, vbit;
 
+    if (!ios_tls_diag_enabled())
+    {
+        /* MADEIRA_TLS_DIAG off (the default): the line of builds 579 to 651, one budget, nothing read from the victim. */
+        n = __sync_add_and_fetch( &lines, 1 );
+        if (n > IOS_TLS_CROSS_LINES + 1) return;
+        if (n == IOS_TLS_CROSS_LINES + 1)
+        {
+            dprintf( STDERR_FILENO, "[tls-cross-clear] %d lines printed; the rest of this run's cross-process TlsFree events are not\n",
+                     IOS_TLS_CROSS_LINES );
+            return;
+        }
+        dprintf( STDERR_FILENO,
+                 "[tls-cross-clear] rev=ajan7-arkham TlsFree(%u) by tid %04x (peb %p) %s the live cell of tid %04x (peb %p, %s-bit): was 0x%llx%s\n",
+                 index, caller_tid, caller_peb, kept ? "SPARED (own-process clearing; MADEIRA_TLS_CLEAR_OWN_PROCESS=0 gives the old behaviour)" : "CLEARED", victim_tid, victim_peb,
+                 victim_32bit ? "32" : "64", old, kept ? "" : " (Windows would not have touched another process)" );
+        return;
+    }
+    prio = ios_tls_clear_victim_has_nw( pass, victim_peb );
     if (prio)
     {
         n = __sync_add_and_fetch( &plines, 1 );
@@ -142,7 +167,7 @@ static void ios_tls_clear_note( struct ios_tls_clear_pass *pass, struct ios_tls_
              "[tls-cross-clear] seq=%llu t=%llu.%09llu rev=ajan7-arkham prio=%d TlsFree(%u) by tid %04x (peb %p, %s-bit) %s the live cell of tid %04x "
              "(peb %p, teb %p, cell %p, %s-bit): was 0x%llx%s; alloc-bit[caller peb]=%s alloc-bit[victim peb]=%s\n",
              seq, t / 1000000000ULL, t % 1000000000ULL, prio, index, caller_tid, caller_peb, caller_32bit ? "32" : "64",
-             kept ? "SPARED (MADEIRA_TLS_CLEAR_OWN_PROCESS=1)" : "CLEARED", victim_tid, victim_peb, victim_teb, cell,
+             kept ? "SPARED (own-process clearing; MADEIRA_TLS_CLEAR_OWN_PROCESS=0 gives the old behaviour)" : "CLEARED", victim_tid, victim_peb, victim_teb, cell,
              victim_32bit ? "32" : "64", old, kept ? "" : " -> 0 (the store follows this line)",
              ios_tls_clear_bit_str( cbit ), ios_tls_clear_bit_str( vbit ) );
     pend->seq = seq;

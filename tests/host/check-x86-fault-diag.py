@@ -207,6 +207,9 @@ allowed = {
     # round 630: checks that pin whole list rows or launcher lines, this switch among them: Hotline Miami's row (agent A2 S15) and
     # Battle.net's session lines (agent A2 S5)
     'tests/host/check-d3d8-to-d3d9.py', 'tests/host/check-wc-old-prot.py',
+    # night round 2026-11-11 (agents G8 S4, D S16, G1 S10, D S13, G3 S4): process_ios.c ([term-code]) and server_ios.c ([spin-code]) name the key in a comment where they call the
+    # header's exported switch / spin dump (neither reads the environment: getenv stays in the header, pinned above), and the checks that run those functions
+    'build/ntdll-unix/process_ios.c', 'build/ntdll-unix/server_ios.c', 'tests/host/check-w-sig-diagnostics.py', 'tests/host/check-term-stack-32.py',
 }
 # The launcher lines: the EA app's entry (round 624, 7NKYWT) and Battle.net's (round 630, agent A2 S5, 6KW9QM), one source line each.
 launch_src = (root / 'app/Madeira/BCDLaunchers.swift').read_text()
@@ -253,7 +256,16 @@ check('the bundled lists that carry the switch are exactly Most Wanted, Undergro
                            ('fallout-3', 'env.MADEIRA_X86_FAULT_DUMP = 1', 630), ('hitman-blood-money', 'env.MADEIRA_X86_FAULT_DUMP = 1', 598),
                            ('hotline-miami', 'env.MADEIRA_X86_FAULT_DUMP = 1', 624), ('resident-evil-5', 'env.MADEIRA_X86_FAULT_DUMP = 1', 630),
                            ('stalker-xray-engine', 'env.MADEIRA_X86_FAULT_DUMP = 1', 630), ('tales-of-zestiria', 'env.MADEIRA_X86_FAULT_DUMP = 1', 630),
-                           ('vampire-bloodlines', 'env.MADEIRA_X86_FAULT_DUMP = 1', 624)]),
+                           ('vampire-bloodlines', 'env.MADEIRA_X86_FAULT_DUMP = 1', 624)]
+                          # night round 2026-11-11 (agents G1, G3, G4, G6, G8, T1, D): the new diagnostic rows and Isaac's v2
+                          + [('assassins-creed-brotherhood', 'env.MADEIRA_X86_FAULT_DUMP = 1', 630), ('astro-tripper', 'env.MADEIRA_X86_FAULT_DUMP = 1', 630), ('bulletstorm', 'env.MADEIRA_X86_FAULT_DUMP = 1', 630), ('call-of-duty-world-at-war', 'env.MADEIRA_X86_FAULT_DUMP = 1', 630), ('far-cry-3-folder', 'env.MADEIRA_X86_FAULT_DUMP = 1', 630), ('mafia-classic', 'env.MADEIRA_X86_FAULT_DUMP = 1', 624), ('need-for-speed-shift', 'env.MADEIRA_X86_FAULT_DUMP = 1', 630), ('the-binding-of-isaac-rebirth', 'env.MADEIRA_X86_FAULT_DUMP = 1', 624)]
+                          # round 660 (M083, M061): the Resident Evil Requiem demo's v4 and Crash Bandicoot's v2
+                          + [('resident-evil-requiem-demo', 'env.MADEIRA_X86_FAULT_DUMP = 1', 598), ('crash-bandicoot-n-sane-trilogy', 'env.MADEIRA_X86_FAULT_DUMP = 1', 598),
+                             ('unreal-tournament-goty', 'env.MADEIRA_X86_FAULT_DUMP = 1', 598)]   # M077
+                          # round 660 M023 (agent K7R): The Witcher 3 v4, the full report of the DirectX 12 build's fault (G7), from build 652
+                          + [('the-witcher-3', 'env.MADEIRA_X86_FAULT_DUMP = 1', 652)]
+                          # owner decision 2026-11-15 (M022, M142): Football Manager 27 v4 says where its protection-layer stop is, from build 598
+                          + [('football-manager-27', 'env.MADEIRA_X86_FAULT_DUMP = 1', 598)]),
       str(carriers))
 
 # ---------------------------------------------------------------- 3. compiled runs
@@ -502,6 +514,12 @@ int main(int argc, char **argv)
     if (!strcmp(s, "av")) { guarded_av(&w, BLOCK, WIN + 0xb514ab6a); printf("reads=%lu\n", g_reads); return 0; }
     if (!strcmp(s, "off")) { guarded_av(&w, BLOCK, WIN + 0xb514ab6a); guarded_int3(&w); printf("enabled=%d reads=%lu\n", ios_x86_fault_enabled(), g_reads); return 0; }
     if (!strcmp(s, "int3")) { guarded_int3(&w); return 0; }
+    if (!strcmp(s, "ceg")) {   /* round 660 (M130): the same int3 three times, two more int3 addresses, then the fault */
+        guarded_int3(&w); guarded_int3(&w); guarded_int3(&w);
+        if (ios_x86_fault_enabled()) { ios_x86_fault_int3(&w.st, w.teb64, w.gregs, INT3_AT + 0x11); ios_x86_fault_int3(&w.st, w.teb64, w.gregs, INT3_AT + 0x21); }
+        guarded_av(&w, BLOCK, WIN + 0xb514ab6a);
+        return 0;
+    }
     if (!strcmp(s, "repeat")) {
         guarded_av(&w, BLOCK, WIN + 0xb514ab6a); guarded_av(&w, BLOCK, WIN + 0xb514ab6a);          /* the redelivery of the same fault */
         guarded_av(&w, BLOCK, WIN + 0xb449ab6a); guarded_av(&w, BLOCK + 8, WIN + 0xb449ab6a);       /* two other faults */
@@ -717,6 +735,12 @@ else:
             heads = [l for l in lines(r) if ' a 32-bit guest faulted ' in l]
             check('seven calls: the redelivery of one fault is not a report, three reports at most, then silence',
                   len(heads) == 3 and '0xb514ab6a' in heads[0] and '0xb449ab6a' in heads[1] and '0xb449ab6a' in heads[2] and '0x0081ab7d' in heads[2], r.stderr)
+            r = run('ceg', MADEIRA_X86_FAULT_DUMP='1')
+            i3 = [l for l in lines(r) if ' a 32-bit guest executed int3 at guest ' in l]
+            avs = [l for l in lines(r) if ' a 32-bit guest faulted ' in l]
+            check('round 660 (M130): one report per int3 address, at most two int3 reports, and the fault after them still gets its report (#3)',
+                  len(i3) == 2 and '0x004405a9' in i3[0] and '0x004405b9' in i3[1] and len(avs) == 1 and avs[0].startswith('[x86-fault] #3 ')
+                  and not any('0x004405c9' in l for l in i3), r.stderr)
             r = run('benign', MADEIRA_X86_FAULT_DUMP='1')
             check('an address outside the window, a 64-bit rip, a thread state without a 4 GB window base, no TEB, no registers and no address print nothing and read nothing',
                   r.stderr == '' and r.stdout.strip() == 'benign-done reads=0', r.stderr + r.stdout)

@@ -1,3 +1,5 @@
+// Portions copyright 2026 Jelly-RayTian: code taken from https://github.com/willfaust/Madeira (pull request #400)
+// under GPL-3.0-or-later and modified for BCD in November 2026. See THIRD-PARTY-NOTICES.md.
 // IOSDisplayShim.m — iOS stand-in for Wine's mac driver, used by DXMT.
 //
 // DXMT (src/winemetal/unix/winemetal_unix.c) looks up this API via
@@ -169,6 +171,7 @@ static int madeira_desktop_mode(void) {
 // Winios.m compositor: per-window CAMetalLayer inside the window's
 // compositor layer (desktop mode only).
 extern CAMetalLayer *winios_metal_layer_for_hwnd(void *hwnd);
+extern CAMetalLayer *winios_vulkan_layer_for_hwnd(void *hwnd);
 // Game sessions: the window a swapchain presents from is the game's own;
 // Winios.m's game-mode window overlay must not draw its GDI bits.
 extern void winios_note_game_metal_hwnd(void *hwnd);
@@ -215,12 +218,54 @@ static macdrv_metal_view my_view_create_metal_view(macdrv_view v, macdrv_metal_d
     return (macdrv_metal_view)CFBridgingRetain(layer);
 }
 
+// madeira-bcd, for the OpenGL presenter (Winios/WiniosGL.m): the layer a GL window presents to, found the way
+// my_view_create_metal_view finds a swapchain's (desktop mode: the window's own layer in the compositor; game mode: the game's
+// singleton) and noted the same way, so the window of a GL game is logged as a swapchain's ([swap-win]) and its GDI surface is
+// not drawn over the picture ([winios] game window ... presents through Metal). Unretained. Only the GL presenter calls it, and
+// only in a session whose gl-backend key is on: the DXMT path above is not touched.
+CAMetalLayer *madeira_display_layer_for_hwnd(void *hwnd) {
+    winios_note_swapchain_hwnd(hwnd);
+    if (madeira_desktop_mode()) {
+        CAMetalLayer *layer = winios_metal_layer_for_hwnd(hwnd);
+        if (!layer) NSLog(@"[madeira-display] desktop metal layer creation failed for the GL window hwnd=%p", hwnd);
+        return layer;
+    }
+    pthread_mutex_lock(&g_lock);
+    CAMetalLayer *layer = g_layer;
+    pthread_mutex_unlock(&g_lock);
+    if (!layer) {
+        NSLog(@"[madeira-display] the GL window hwnd=%p asked for the metal layer before one was registered!", hwnd);
+        return nil;
+    }
+    winios_note_game_metal_hwnd(hwnd);
+    return layer;
+}
+
 static macdrv_metal_layer my_view_get_metal_layer(macdrv_metal_view v) {
     return (macdrv_metal_layer)v;
 }
 
 static void my_view_release_metal_view(macdrv_metal_view v) {
     if (v) CFBridgingRelease((CFTypeRef)v);
+}
+
+/* madeira-bcd (Windows Vulkan; Madeira #400/#462): winevulkan's window surfaces (build/win32u-unix/vulkan_surface_ios.c). Vulkan uses
+ * the same retain contract as DXMT, with client-pixel geometry for desktop compositor layers. NULL HWND is only a native
+ * presentation-support probe, not a window. */
+void *madeira_vulkan_layer_acquire(void *hwnd) {
+    if (hwnd && madeira_desktop_mode()) {
+        winios_note_swapchain_hwnd(hwnd);
+        CAMetalLayer *layer = winios_vulkan_layer_for_hwnd(hwnd);
+        return layer ? (void *)CFBridgingRetain(layer) : NULL;
+    }
+    if (hwnd) return (void *)my_view_create_metal_view((macdrv_view)hwnd, NULL);
+    pthread_mutex_lock(&g_lock);
+    void *retained = g_layer ? (void *)CFBridgingRetain(g_layer) : NULL;
+    pthread_mutex_unlock(&g_lock);
+    return retained;
+}
+void madeira_vulkan_layer_release(void *layer) {
+    my_view_release_metal_view((macdrv_metal_view)layer);
 }
 
 static void my_on_main_thread(dispatch_block_t b) {

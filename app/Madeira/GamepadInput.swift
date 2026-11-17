@@ -1,3 +1,6 @@
+// Portions copyright 2026 Russell Barton: code taken from https://github.com/thebcd69/bcd-games (pull request #46 by rbarton124)
+// under GPL-3.0-or-later with the Madeira Converter Exception and modified for BCD in November 2026. See THIRD-PARTY-NOTICES.md.
+// Portions copyright 2026 Paulo Eduardo Correa (pauloec): the native iPhone Duo interface (Liquid Glass, system tabs, controller navigation, Windows desktop on Home), from thebcd69/bcd-games pull request #43; GPL-3.0-only, modified for BCD in November 2026. See THIRD-PARTY-NOTICES.md.
 import Foundation
 // GameController supports background handler queues but lacks Sendable annotations.
 @preconcurrency import GameController
@@ -70,9 +73,12 @@ final class GamepadInput: @unchecked Sendable {
     /// default). "hid": player 1 becomes a HID game controller served by the
     /// wineserver (build/wineserver/hidpad_ios.c) -- a DualSense when the pad
     /// is a PlayStation one, a generic HID gamepad otherwise -- and leaves
-    /// XInput. "dualsense" / "generic" force that identity. Read once, at
-    /// session start (beginPadSession): the device exists before the game
-    /// enumerates, so a change applies at the game's next start.
+    /// XInput. "dualsense" / "generic" force that identity. "xbox360": player 1
+    /// stays on XInput and is also the HID device Windows lists beside a wired
+    /// Xbox 360 controller (045E:028E, IG_00), for games that look for an Xbox
+    /// controller among the devices before they read XInput (Far Cry 4). Read
+    /// once, at session start (beginPadSession): the device exists before the
+    /// game enumerates, so a change applies at the game's next start.
     static let padModeKey = "env.MADEIRA_PAD_MODE"
     static func configuredPadMode() -> (value: String, source: String) {
         if let v = MadeiraConfig.gameValue(padModeKey) { return (v.lowercased(), "game") }
@@ -116,7 +122,7 @@ final class GamepadInput: @unchecked Sendable {
         // An earlier session in this app run may have taken player 1 off XInput.
         queue.async { [self] in hidActive = false; hidKeepsXInput = false }
         Self.sessionHIDKind = nil
-        guard ["hid", "dualsense", "generic"].contains(mode.value) else {
+        guard ["hid", "dualsense", "generic", "xbox360"].contains(mode.value) else {
             LogStore.shared.log("[hid-pad] ml2100 session mode=xinput source=\(mode.source)")
             beginPadOutput(xinput: output.xinput && Self.enabled, hid: false, value: output.value)
             return
@@ -131,18 +137,21 @@ final class GamepadInput: @unchecked Sendable {
         let sony = first?.extendedGamepad is GCDualSenseGamepad || first?.extendedGamepad is GCDualShockGamepad
         let kind: String
         switch mode.value {
-        case "dualsense", "generic": kind = mode.value
+        case "dualsense", "generic", "xbox360": kind = mode.value
         // No pad yet: a DualSense, the identity this mode exists for.
         default: kind = first == nil || sony ? "dualsense" : "generic"
         }
         setenv("MADEIRA_HIDPAD", kind, 1)
         if kind == "generic", let name = first?.vendorName { setenv("MADEIRA_HIDPAD_NAME", name, 1) }
         Self.sessionHIDKind = kind
-        let keepXInput = Self.optIn("MADEIRA_HIDPAD_XINPUT")
+        // The Xbox 360 identity is the device beside an XInput pad: player 1 stays on XInput, as on Windows. For the others the
+        // game's own file as well, as the mode above and MADEIRA_PAD_EARLY_SLOT (round 630): its env lines reach the process
+        // environment only after this runs.
+        let keepXInput = kind == "xbox360" || MadeiraConfig.gameValue("env.MADEIRA_HIDPAD_XINPUT") == "1" || Self.optIn("MADEIRA_HIDPAD_XINPUT")
         queue.async { [self] in hidActive = true; hidKeepsXInput = keepXInput; sample() }
         LogStore.shared.log("[hid-pad] ml2100 session mode=\(mode.value) source=\(mode.source) kind=\(kind) "
                             + "pad=\(first?.productCategory ?? "none") xinput-slot0=\(keepXInput ? "kept" : "off")")
-        // Only the DualSense identity has output reports (the generic pad has none).
+        // Only the DualSense identity has output reports (the generic and Xbox 360 pads have none).
         beginPadOutput(xinput: output.xinput, hid: output.hid && kind == "dualsense", value: output.value)
     }
 
@@ -166,6 +175,9 @@ final class GamepadInput: @unchecked Sendable {
 
     /// madeira-bcd (2026-10-25, round 603): the gyro's right stick changed (BCDGyroLive.swift); player 1 is published again.
     func gyroChanged() { queue.async { [self] in sample() } }
+
+    /// Night round 2026-11-11 (A5 S13): the aiming finger's right stick changed (BCDTouchExtrasLive.swift, BCDAimStick); player 1 is published again.
+    func aimStickChanged() { queue.async { [self] in sample() } }
 
     /// madeira-bcd (2026-10-25, round 604): turbo, macros or a press BCD makes itself changed (BCDTurboLive.swift); player 1 is published again.
     func inputExtrasChanged() { queue.async { [self] in sample() } }
@@ -222,6 +234,19 @@ final class GamepadInput: @unchecked Sendable {
     private var touchState = TouchGamepadState()
     @MainActor private var observers: [NSObjectProtocol] = []
     @MainActor private var started = false
+    /// madeira-bcd (from Madeira #517, 58c8990 "ml2190"): every 2 s a controller whose extendedGamepad is no longer the
+    /// profile its slot reads gets the live one. The old object can keep reporting buttons with its axes frozen at rest
+    /// (an upstream device log: buttons and triggers reached the game, the sticks never left zero). It acts only on a
+    /// replaced profile object, so a slot whose profile is the live one is not touched. MADEIRA_XINPUT_PROFILE_CHECK = 0
+    /// (env line in bcd.cfg) leaves a slot with the profile its controller had when it joined, as before.
+    static let profileCheck: Bool = flag("MADEIRA_XINPUT_PROFILE_CHECK")
+    @MainActor private var profileTimer: Timer?
+    /// The first few times a slot's profile was replaced (queue-owned), so a controller that hands out a new object at every
+    /// look cannot fill the log.
+    private var profileLogsLeft = [8, 8, 8, 8]
+    /// ml2190: the first 8 times each slot's sticks leave rest, with GameController's raw values (queue-owned; log only).
+    private var stickDiagLeft = [8, 8, 8, 8]
+    private var stickDiagLive = [false, false, false, false]
 
     @MainActor func start() {
         guard !started else { return }
@@ -247,6 +272,59 @@ final class GamepadInput: @unchecked Sendable {
         })
         refreshControllers()
         setActive(UIApplication.shared.applicationState == .active)
+        if Self.profileCheck {
+            profileTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.recheckProfiles() }
+            }
+        }
+    }
+
+    /// Slot i reads `profile`; its changes sample at once (queue-owned).
+    private func attach(_ profile: GCExtendedGamepad, slot i: Int) {
+        profiles[i]?.valueChangedHandler = nil
+        profiles[i] = profile
+        profile.valueChangedHandler = { [weak self] _, _ in
+            // Explicit queue hop also serializes callbacks already in flight
+            // when a controller is disconnected or the app resigns active.
+            self?.queue.async { [weak self] in self?.sample() }
+        }
+    }
+
+    /// madeira-bcd (Madeira #517): the 2 s look. Only the profiles are compared; the rest of refreshControllers (the players'
+    /// card, the system gestures, the rumble slots) is not run again, so a tick with nothing replaced costs one
+    /// GCController.controllers() and a hop to the queue.
+    @MainActor private func recheckProfiles() {
+        // Capture the live profiles on main, as refreshControllers does (the slots belong to the queue).
+        let live = GCController.controllers().compactMap { controller -> (GCController, GCExtendedGamepad)? in
+            guard let profile = controller.extendedGamepad else { return nil }
+            return (controller, profile)
+        }
+        queue.async { [self] in replaceStaleProfiles(live) }
+    }
+
+    /// The slots whose controller is live but reads another extendedGamepad object than the live one (pure; tests/host/check-gamepad-profile.py
+    /// compiles this function). A controller with no slot, and a slot whose profile is the live object, are not in the answer.
+    static func staleProfileSlots(controllers: [GCController?], profiles: [GCExtendedGamepad?],
+                                  live: [(GCController, GCExtendedGamepad)]) -> [(slot: Int, profile: GCExtendedGamepad)] {
+        var stale: [(slot: Int, profile: GCExtendedGamepad)] = []
+        for (controller, profile) in live {
+            guard let i = controllers.firstIndex(where: { $0 === controller }), i < profiles.count, profiles[i] !== profile else { continue }
+            stale.append((slot: i, profile: profile))
+        }
+        return stale
+    }
+
+    /// A controller that already has a slot but a different extendedGamepad object than the slot reads: the slot reads the live one. Queue-owned.
+    private func replaceStaleProfiles(_ live: [(GCController, GCExtendedGamepad)]) {
+        guard Self.profileCheck else { return }
+        for (i, profile) in Self.staleProfileSlots(controllers: controllers, profiles: profiles, live: live) {
+            attach(profile, slot: i)
+            if profileLogsLeft[i] > 0 {
+                profileLogsLeft[i] -= 1
+                LogStore.shared.log("[xinput] ml2190 slot=\(i) controller has a new input profile: the slot reads the live one")
+            }
+            sample()
+        }
     }
 
     @MainActor private func refreshControllers() {
@@ -270,20 +348,16 @@ final class GamepadInput: @unchecked Sendable {
                 winios_gamepad_set_vibration(Int32(i), 0, 0)
                 fputs("[xinput] ml1920 slot=\(i) disconnected\n", stderr)
             }
+            replaceStaleProfiles(live)   // madeira-bcd (Madeira #517): a controller that came back with a new profile object
             for (controller, profile) in live {
                 // madeira-bcd (round 604): the slot the player chose for this controller when it is free, else the first free one as always.
                 guard !controllers.contains(where: { $0 === controller }),
                       let i = BCDPlayersLive.slot(forKey: playerKeys[ObjectIdentifier(controller)], occupied: controllers.map { $0 != nil }) else { continue }
                 controllers[i] = controller
-                profiles[i] = profile
                 // A pad joining a slot starts still, before sample() publishes it,
                 // rather than replaying the level the slot had before.
                 winios_gamepad_set_vibration(Int32(i), 0, 0)
-                profile.valueChangedHandler = { [weak self] _, _ in
-                    // Explicit queue hop also serializes callbacks already in flight
-                    // when a controller is disconnected or the app resigns active.
-                    self?.queue.async { [weak self] in self?.sample() }
-                }
+                attach(profile, slot: i)   // madeira-bcd (Madeira #517): the same two lines as before, now shared with the profile check
                 fputs("[xinput] ml1920 slot=\(i) connected\n", stderr)
             }
             // ml2106: the pad in each slot is where that slot's rumble plays
@@ -339,13 +413,14 @@ final class GamepadInput: @unchecked Sendable {
             let pad = profiles[i]
             let touchConnected = i == BCDPlayersLive.touchSlot && touchState.connected   // madeira-bcd (round 604): the touch controls play as the player chosen, Player 1 unless changed
             let gyroConnected = i == 0 && BCDGyroLive.stickActive   // madeira-bcd (2026-10-25, round 603): gyro aim on the right stick (opt-in per game)
+            let aimConnected = i == 0 && BCDAimStick.active   // night round 2026-11-11 (A5 S13): the aiming finger on the right stick (opt-in per game: aim-as = stick)
             // Player 1's pad went away mid-press: nothing feeds the driver now, so
             // release the keys and buttons it holds.
             if i == 0, pad == nil, keyboardMouse != nil, PadKeyboardMouse.shared.holding {
                 PadKeyboardMouse.shared.releaseAll("controller disconnected")
             }
             let hid = i == 0 && hidActive
-            guard pad != nil || touchConnected || gyroConnected else {
+            guard pad != nil || touchConnected || gyroConnected || aimConnected else {
                 winios_gamepad_set_state(Int32(i), nil)
                 if hid { winios_hidpad_set_state(nil) }
                 continue
@@ -375,6 +450,17 @@ final class GamepadInput: @unchecked Sendable {
                 state.ly = Self.axis(pad.leftThumbstick.yAxis.value)
                 state.rx = Self.axis(pad.rightThumbstick.xAxis.value)
                 state.ry = Self.axis(pad.rightThumbstick.yAxis.value)
+                if stickDiagLeft[i] > 0 {   // madeira-bcd (Madeira #517 ml2190): the first times a stick leaves rest, raw (log only)
+                    let moved = abs(Int(state.lx)) > 7849 || abs(Int(state.ly)) > 7849
+                        || abs(Int(state.rx)) > 8689 || abs(Int(state.ry)) > 8689
+                    if moved != stickDiagLive[i] {
+                        stickDiagLive[i] = moved
+                        if moved {
+                            stickDiagLeft[i] -= 1
+                            LogStore.shared.log("[xinput] ml2190 app slot=\(i) sticks: left \(pad.leftThumbstick.xAxis.value),\(pad.leftThumbstick.yAxis.value) right \(pad.rightThumbstick.xAxis.value),\(pad.rightThumbstick.yAxis.value)")
+                        }
+                    }
+                }
                 // The library front end navigates with player 1's pad (Library.swift).
                 // While it owns input (no session, or its menu is open) the game
                 // sees a connected pad at rest.
@@ -419,6 +505,10 @@ final class GamepadInput: @unchecked Sendable {
             if i == 0, BCDGyroLive.padNeeded, active, keyboardMouse == nil, !LibraryController.shared.ownsInput {
                 BCDGyroLive.shared.padSample(&state)
             }
+            // Night round 2026-11-11 (A5 S13): the aiming finger's right stick (BCDAimStick). One static flag while it is off; the same conditions as the gyro's.
+            if i == 0, BCDAimStick.active, active, keyboardMouse == nil, !LibraryController.shared.ownsInput {
+                BCDAimStick.shared.padSample(&state)
+            }
             // madeira-bcd (2026-10-25, round 604): turbo and macros (BCDTurboLive.swift) change what player 1's merged state presses. One
             // static flag when they are off; not while the library's menu owns the controller or the pad is keys and mouse.
             if i == 0, BCDTurboLive.padNeeded, active, keyboardMouse == nil, !LibraryController.shared.ownsInput {
@@ -427,7 +517,8 @@ final class GamepadInput: @unchecked Sendable {
             if hid {
                 publishHID(state, live: hidLive, pad: pad)
                 // One controller, one API: player 1 is not also an XInput pad,
-                // as a DualSense on Windows is not (MADEIRA_HIDPAD_XINPUT=1 keeps both).
+                // as a DualSense on Windows is not (MADEIRA_HIDPAD_XINPUT=1 keeps both;
+                // the Xbox 360 identity always does, as a 360 pad on Windows is both).
                 if !hidKeepsXInput {
                     winios_gamepad_set_state(Int32(i), nil)
                     continue
@@ -472,11 +563,36 @@ final class GamepadInput: @unchecked Sendable {
 }
 
 /// iOS 18 otherwise routes stick input into UIKit/SwiftUI focus navigation.
+// Modified 2026-11-04: claim on the window without wrapping native bars in a
+// safe-area-sized SwiftUI interaction view. That wrapper drew the Duo bars
+// outside its hit-test bounds, so their buttons appeared but could not be tapped.
 struct ClaimGamepadEvents: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(iOS 18.0, *), GamepadInput.enabled {
+    @ViewBuilder func body(content: Content) -> some View {
+        if BCDDuoFeatures.active {
+            content.background(GamepadWindowClaimProbe())
+        } else if #available(iOS 18.0, *), GamepadInput.enabled {
             content.handlesGameControllerEvents(matching: .gamepad)
-        } else { content }
+        } else {
+            content
+        }
+    }
+}
+
+private struct GamepadWindowClaimProbe: UIViewRepresentable {
+    func makeUIView(context: Context) -> GamepadWindowClaimView { GamepadWindowClaimView() }
+    func updateUIView(_ view: GamepadWindowClaimView, context: Context) {}
+}
+
+private final class GamepadWindowClaimView: UIView {
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if let window { GamepadEventClaim.install(on: window) }
     }
 }
 

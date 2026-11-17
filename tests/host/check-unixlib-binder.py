@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Portions copyright 2026 Jelly-RayTian: code taken from https://github.com/willfaust/Madeira (pull request #400)
+# under GPL-3.0-or-later and modified for BCD in November 2026. See THIRD-PARTY-NOTICES.md.
 """Unix-library binder by caller bitness (virtual_ios.c load_builtin_unixlib); no Wine runs.
 
 Part A reads the by-module match chain and checks that every branch names the same 64-bit table
@@ -81,6 +83,27 @@ assert len(dmo) == 1, len(dmo)
 assert dmo[0].split("\n")[0].rstrip().endswith("&& !wow) {"), dmo[0].split("\n")[0]
 assert "funcs64 = (const void *)winedmo_unix_call_funcs;" in dmo[0] and "funcs_wow64" not in dmo[0], dmo[0]
 branches = [b for b in branches if b is not dmo[0]]
+# winevulkan's branch is new too (Windows Vulkan, madeira-bcd; upstream Madeira #400/#462). A 64-bit caller always enters it and gets the
+# 64-bit table. A 32-bit caller enters it only in a session with the vulkan key (ios_vk_session_on: MADEIRA_VULKAN_LIBRARY is set) and gets
+# winevulkan's own wow64 table, whose thunks convert guest pointers (build 660, tools/patch-wine-vulkan-wow64.py; tests/host/
+# check-vulkan-wow64.py); without the key it falls through to the generic branch, which refuses it loudly, as before. Only a game whose file
+# has vulkan = moltenvk has a winevulkan.dll in its prefix at all (WineProcessBridge.m, bcd_vulkan_session_setup).
+vulkan = [b for b in branches if 'strstr(match, "winevulkan")' in b.split("\n")[0]]
+assert len(vulkan) == 1, len(vulkan)
+assert vulkan[0].split("\n")[0] == 'if (match && strstr(match, "winevulkan") && (!wow || ios_vk_session_on())) {', vulkan[0].split("\n")[0]
+assert "funcs64 = (const void *)winevulkan_unix_call_funcs;" in vulkan[0], vulkan[0]
+assert "funcs_wow64 = (const void *)winevulkan_unix_call_wow64_funcs;" in vulkan[0] and "funcs_wow64 = NULL" not in vulkan[0], vulkan[0]
+branches = [b for b in branches if b is not vulkan[0]]
+print("PASS: WineVulkan binds its 64-bit Unix table for 64-bit callers and its own WoW64 table for 32-bit callers of a session with the key")
+# the real opengl32 branch is new too (OpenGL, madeira-bcd): it is entered only when ios_gl_real_unixlib() says so (the session has
+# gl-backend on, and for a 64-bit module it is not the shipped base-0x7a800000 file), it offers a 32-bit caller opengl32's own
+# wow64 table (never the 64-bit one), and it stands BEFORE upstream's GL-absent stub branch, which stays the compared one below.
+glr = [b for b in branches if 'strstr(match, "opengl32") && ios_gl_real_unixlib( module, wow )' in b.split("\n")[0]]
+assert len(glr) == 1, len(glr)
+assert "funcs64 = (const void *)opengl32_unix_call_funcs;" in glr[0] and "funcs_wow64 = (const void *)opengl32_unix_call_wow64_funcs;" in glr[0], glr[0]
+stub_gl = [i for i, b in enumerate(branches) if 'strstr(match, "opengl32")' in b.split("\n")[0] and b is not glr[0]]
+assert len(stub_gl) == 1 and branches.index(glr[0]) == stub_gl[0] - 1, ("the real opengl32 branch stands right before the stub one", stub_gl)
+branches = [b for b in branches if b is not glr[0]]
 assert len(branches) == len(upstream) + 1, len(branches)
 for (test, table), body in zip(upstream, branches):
     assert test in body.split("\n")[0], (test, body.split("\n")[0])

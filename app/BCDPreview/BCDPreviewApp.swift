@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright 2026 thebcd69 (BCD)
 // BCD Material: additional terms under GPL-3.0 section 7 apply; see LICENSE-BCD.md.
+// Portions copyright 2026 Paulo Eduardo Correa (pauloec): the native iPhone Duo interface (Liquid Glass, system tabs, controller navigation, Windows desktop on Home), from thebcd69/bcd-games pull request #43; GPL-3.0-only, modified for BCD in November 2026. See THIRD-PARTY-NOTICES.md.
+// Portions copyright 2026 creeper4004: colour profiles and Settings > Appearance, from thebcd69/bcd-games pull request #27; GPL-3.0-only, modified for BCD in November 2026. See THIRD-PARTY-NOTICES.md.
 
 import SwiftUI
 import UIKit
@@ -23,6 +25,7 @@ import UIKit
 ///                                             section+state picks a sample's state (vcruntime+installed)
 ///   -BCDTab game[-<game id>[-<what>]]          a game's page (BCDGamePageSample.swift)
 ///   -BCDTab add[-games|-pick]                  Add a game (BCDAddGameSample.swift)
+///   -BCDTab workshop[-<game id>[-browse|-card]]  the Steam Workshop: the area, a game's page, its Browse, an item's card (BCDWorkshopSample.swift)
 ///   -BCDTab epic-ask[-offline|-owned|-signin]  the question BCD asks when an Epic game's signed-in start can't be made (BCDPreviewEpicAsk.swift)
 ///   -BCDStage 890x626[:regular,regular]       the interface in a window of that many points on the screen's centre, with those size
 ///                                             classes (BCDPreviewStage.swift; tools/ui-preview.py --stage crops the photograph to it)
@@ -39,6 +42,7 @@ struct BCDPreviewApp: App {
 
     init() {
         let defaults = UserDefaults.standard
+        if let theme = defaults.string(forKey: "BCDTheme") { BCDThemeStore.shared.select(theme) }
         let actions = BCDPreviewActions()
         BCDUpdateChecker.shared.usePreviewSample()
         // -BCDLook graphite,green,playstation,ring: the touch controls' look (round 604; body, colour when pressed, symbols, how a press shows).
@@ -61,6 +65,7 @@ struct BCDPreviewApp: App {
         BCDPlayersModel.shared.preview(names: defaults.bool(forKey: "BCDEmpty") ? [] : ["Xbox Wireless Controller", "DualSense Wireless Controller", nil, nil],
                                        rumble: [1: 50], touchSlot: defaults.bool(forKey: "BCDEmpty") ? 0 : 1)
         BCDAddGameSource.backend = BCDAddGameSample()
+        BCDWorkshopSource.backend = BCDWorkshopSample()   // -BCDTab workshop[-<game id>[-browse|-card]] (BCDWorkshopSample.swift)
         BCDLauncherSample.prepare(defaults.string(forKey: "BCDSection"))   // the launchers' chips (Battle.net, EA app) on sample data
     }
 
@@ -84,6 +89,7 @@ struct BCDPreviewApp: App {
                 }
                 .modifier(BCDPreviewSessionScreens(store: store, focus: focus))   // -BCDTab ingame-menu|starting|overlay (BCDPreviewSession.swift)
                 .modifier(BCDPreviewStage())   // -BCDStage WxH[:regular|compact,regular|compact] (BCDPreviewStage.swift): a window of that size, centred; outermost, so the in-game screens are inside it
+                .modifier(BCDFoldableWatch())
         }
     }
 
@@ -92,13 +98,19 @@ struct BCDPreviewApp: App {
         if tab == "settings" {
             let section = UserDefaults.standard.string(forKey: "BCDSection")
                 .flatMap { BCDSettingsSection(name: String($0.split(separator: "+").first ?? "")) }
-            BCDSettingsRoot(store: store, close: {}, section: section).environmentObject(focus)
+            if BCDDuoFeatures.active {
+                BCDDuoSettingsRoot(store: store, close: {}, section: section).environmentObject(focus)
+            } else {
+                BCDSettingsRoot(store: store, close: {}, section: section).environmentObject(focus)
+            }
         } else if tab == "controllers" {
             BCDControllerPreview(focus: focus)
         } else if tab.hasPrefix("game") {
             BCDGamePreviewRoot(spec: tab).environmentObject(store).environmentObject(focus)
         } else if tab.hasPrefix("epic-ask") {
             BCDEpicAskPreview(spec: tab, store: store, focus: focus)
+        } else if tab.hasPrefix("workshop") {
+            BCDWorkshopPreviewRoot(spec: tab).environmentObject(store).environmentObject(focus)
         } else if tab.hasPrefix("add") {
             BCDAddGamePreviewRoot(spec: tab).environmentObject(store).environmentObject(focus)
         } else if tab.hasPrefix("input-") {

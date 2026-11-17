@@ -152,6 +152,23 @@ func readiness() {
     func ids(_ m: [BCDReadinessModule], files: [String] = [], _ p: BCDReadinessProvided = none) -> [String] {
         BCDReadiness.evaluate(modules: m, files: Set(files), provided: p).map(\.id)
     }
+    // Round 660 (M112): a path with a character outside Windows-1252 is named, with the character; an accent of 1252 or a plain path is not.
+    let plainGame = [module("g.exe", true, ["kernel32.dll"])]
+    let ansi = BCDReadiness.evaluate(modules: plainGame, files: [], provided: none, mainPath: "Games/Foo\u{2713} /Foo.exe")
+    check("a folder name with a check mark gets the ANSI note, no fix, naming the character",
+          ansi.map { ($0.id, $0.fixable) }.first! == ("ansi-path", false) && ansi[0].text.contains("\u{2713}")
+          && BCDReadiness.logLine(game: "G", modules: 1, findings: ansi).hasSuffix("ansi-path(no fix)"))
+    check("an accent Windows-1252 holds (Caf\u{E9}, Gr\u{F6}\u{DF}e, \u{20AC}) or a plain path gets no ANSI note",
+          BCDReadiness.evaluate(modules: plainGame, files: [], provided: none, mainPath: "Games/Caf\u{E9} Gr\u{F6}\u{DF}e \u{20AC}/Foo.exe").isEmpty
+          && BCDReadiness.evaluate(modules: plainGame, files: [], provided: none, mainPath: "Games/Foo/Foo.exe").isEmpty
+          && BCDReadiness.evaluate(modules: plainGame, files: [], provided: none).isEmpty
+          && BCDReadiness.firstNonANSI("C:\\\u{65E5}\u{672C}") == "\u{65E5}")
+    // Round 660 (M111): a program that imports glide2x.dll without it beside it is named; a folder that carries it, or a scan cut short, is not.
+    let glide = [module("3DFX.exe", false, ["kernel32.dll", "glide2x.dll"])]
+    check("a Glide program without glide2x.dll in the folder gets the Glide note, no fix",
+          BCDReadiness.evaluate(modules: glide, files: [], provided: none).map { ($0.id, $0.fixable) }.first! == ("glide", false))
+    check("... not when the folder carries it, not when the scan stopped at its limit",
+          ids(glide, files: ["glide2x.dll"]).isEmpty && BCDReadiness.evaluate(modules: glide, files: [], provided: none, complete: false).isEmpty)
     check("a game that imports only what Windows and BCD have has nothing missing",
           ids([module("g.exe", true, ["kernel32.dll", "d3d11.dll", "vcruntime140.dll", "msvcp140.dll", "xinput1_3.dll"])]).isEmpty)
     check("a 64-bit MFC game without Microsoft's Visual C++ runtime is told to download it",
@@ -210,7 +227,20 @@ func readiness() {
     check("OpenAL, PhysX and the 2010 DirectX files each point at their Start menu runtime",
           ids([module("g.exe", false, ["openal32.dll"])]) == ["openal"] && ids([module("g.exe", false, ["physxloader.dll"])]) == ["physx"]
           && ids([module("g.exe", false, ["xactengine2_1.dll"])]) == ["dx2010"] && ids([module("g.exe", true, ["xactengine3_7.dll"])]) == ["dx2010"])
-    check("... a DLL the game carries itself is not missing", ids([module("g.exe", false, ["openal32.dll", "physxloader.dll"])], files: ["openal32.dll", "physxloader.dll"]).isEmpty)
+    check("... a DLL the game carries itself is not missing (OpenAL; PhysX only when the core comes with its loader, below)",
+          ids([module("g.exe", false, ["openal32.dll", "physxloader.dll"])], files: ["openal32.dll", "physxloader.dll", "physxcore.dll"]).isEmpty
+          && ids([module("g.exe", false, ["openal32.dll"])], files: ["openal32.dll"]).isEmpty)
+    // Night round 2026-11-11 (G10 S12, X-Men Origins: Wolverine EWCBZQ): the game ships PhysXLoader.dll and no core: the loader needs NVIDIA's System Software.
+    let wolverine = ["physxloader.dll", "physxextensions.dll", "nxcooking.dll"]
+    check("PhysX: a shipped PhysXLoader.dll without a PhysXCore.dll still needs the System Software (EWCBZQ)",
+          ids([module("XMenOriginsWolverine.exe", false, ["physxloader.dll"])], files: wolverine) == ["physx"])
+    check("... a shipped core (physxcore.dll, or physxcore64.dll for a 64-bit game) needs nothing",
+          ids([module("g.exe", false, ["physxloader.dll"])], files: wolverine + ["physxcore.dll"]).isEmpty
+          && ids([module("g.exe", true, ["physxloader.dll"])], files: wolverine + ["physxcore64.dll"]).isEmpty)
+    check("... installed (BCD Runtimes), it is not missing", { var p = none; p.physX = true; return ids([module("g.exe", false, ["physxloader.dll"])], files: wolverine, p).isEmpty }())
+    check("... a scan that stopped at its limit says nothing about a shipped loader (the core may not have been reached), and judges a missing loader as before",
+          BCDReadiness.evaluate(modules: [module("g.exe", false, ["physxloader.dll"])], files: Set(wolverine), provided: none, complete: false).isEmpty
+          && BCDReadiness.evaluate(modules: [module("g.exe", false, ["physxloader.dll"])], files: [], provided: none, complete: false).map(\.id) == ["physx"])
     check("... installed, they are not missing", { var p = none; p.openAL = true; p.physX = true; p.directX2010 = true; return ids([module("g.exe", false, ["openal32.dll", "physxloader.dll", "xactengine2_1.dll"])], p).isEmpty }())
     check("a 32-bit DirectX file BCD already has (xactengine2_0, d3dx9_43) is not flagged", ids([module("g.exe", false, ["xactengine2_0.dll", "d3dx9_43.dll", "xinput1_3.dll"])]).isEmpty)
     check("XNA: the game's folder names the framework and the runtime is missing", ids([], files: ["microsoft.xna.framework.dll"]) == ["xna"]

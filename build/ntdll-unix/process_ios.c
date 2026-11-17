@@ -1,3 +1,7 @@
+/* Portions copyright 2026 Russell Barton: code taken from https://github.com/thebcd69/bcd-games (pull request #46 by rbarton124)
+ * under LGPL-2.1-or-later and modified for BCD in November 2026. See THIRD-PARTY-NOTICES.md. */
+/* Portions copyright 2026 125hz and Ash Hopkins: code taken from https://github.com/willfaust/Madeira (pull requests #240, #461 and #549)
+ * under LGPL-2.1-or-later and modified for BCD in October and November 2026. See THIRD-PARTY-NOTICES.md. */
 /*
  * NT process handling
  *
@@ -79,8 +83,31 @@
 #include "wine/condrv.h"
 #include "wine/server.h"
 #include "wine/debug.h"
+#define MADEIRA_REDACT_WINE
+#include "../madeira_redact.h"   /* command lines are logged with credential-like values redacted */
 
 WINE_DEFAULT_DEBUG_CHANNEL(process);
+
+/* madeira-bcd (D12, upstream Madeira's log redaction): the last 128 characters of a command line for the "cmdline-tail" lines
+ * ([proc-gate] steamwebhelper, [sc-cef], [ea-cef]), cut from the REDACTED copy of the whole line (build/madeira_redact.h): a
+ * credential value cut by the tail's start could no longer be recognised. Anything but printable ASCII prints as '?'. If the
+ * copy cannot be made the tail is empty. tail needs 136 bytes. The command line the program receives is never touched. */
+static void ios_cmdline_tail( const WCHAR *line, int n, char tail[136] )
+{
+    size_t cap = 2 * (size_t)(n > 0 ? n : 0) + 64, sn;
+    unsigned short *shown = malloc( cap * sizeof(*shown) );
+    int tstart, ti = 0;
+
+    if (shown)
+    {
+        sn = madeira_redact_line_w( (const unsigned short *)line, (size_t)(n > 0 ? n : 0), shown, cap );
+        tstart = sn > 128 ? (int)sn - 128 : 0;
+        for (; ti + tstart < (int)sn && ti < 135; ti++)
+            tail[ti] = (shown[tstart + ti] >= 0x20 && shown[tstart + ti] < 0x7f) ? (char)shown[tstart + ti] : '?';
+        free( shown );
+    }
+    tail[ti] = 0;
+}
 
 
 static ULONG execute_flags = MEM_EXECUTE_OPTION_DISABLE;
@@ -576,6 +603,16 @@ void ios_child_slot_bind_peb( void *peb )
     pthread_mutex_unlock( &ios_child_lock );
 }
 
+/* The Windows image path of the child whose boot thread this is, NULL for a child without a slot (upstream Madeira v0.2.0, #549). The slot
+ * is this thread's until its boot thread returns, so no lock. Read by virtual_ios.c: a guest-window placeholder held for the game's folder
+ * (MADEIRA_WOW_HOLD_FOR) goes only to a program from that folder. */
+const char *ios_child_image_path( void )
+{
+    int slot = ios_child_slot_current;
+    if (slot < 0 || slot >= IOS_CHILD_SLOTS || !ios_child_slots[slot].used) return NULL;
+    return ios_child_slots[slot].path;
+}
+
 /* The child process with this PEB ended (process_exit_wrapper). Marks the slot that holds it, whichever thread
  * ended it; the slot itself is released when the child's boot thread returns, if it ever does. */
 void ios_child_slot_exited( void *peb )
@@ -956,7 +993,7 @@ static NTSTATUS spawn_process( const RTL_USER_PROCESS_PARAMETERS *params, int so
      * against the wrong directory is a question, not a finding: no line of any log said what directory a
      * Steam-launched child has, and this one does. */
     ERR("spawn_process: creating child thread for %s (fd=%d, unixdir=%d, dup_unixdir=%d) cwd=%s\n",
-        debugstr_us(&params->CommandLine), socketfd, unixdir, args->unixdir,
+        madeira_debugstr_cmdline_us(&params->CommandLine), socketfd, unixdir, args->unixdir,
         debugstr_us(&params->CurrentDirectory.DosPath));
 
     ret = pthread_create( &child_thread, NULL, ios_child_thread_entry, args );
@@ -1885,6 +1922,69 @@ static int renderer_wasm_cmdline( const WCHAR *cl, int cl_len, WCHAR *out, int c
     *merged = 1;
     return o;
 }
+
+/* madeira-bcd: Ubisoft Connect's Chromium (on unless env.MADEIRA_UBI_CEF = 0), like Steam's and Social Club's models.
+ *
+ * upc.exe is CEF 135's BROWSER process (32-bit libcef.dll, no --type=); it starts UplayWebCore.exe --type=gpu-process,
+ * --type=utility (NetworkService, StorageService, the component Unzipper, ProcessorMetrics) and --type=renderer children,
+ * one per browser view. Every 32-bit process needs a 4 GB guest window and the session has seven, so unlike Steam's
+ * webhelper, Social Club's helper and the EA app, which run --single-process, this browser keeps its helpers (a refused
+ * helper makes Chromium abort: "GPU process isn't usable"; --single-process stops in a fatal mojo CHECK in this CEF) and
+ * only gets Chromium's process-count switches:
+ *   --in-process-gpu                  no GPU process (also none for the DX12/Vulkan info collection)
+ *   --disable-site-isolation-trials   with --renderer-process-limit=1: one renderer process for every view
+ *   --renderer-process-limit=1
+ *   --js-flags=--jitless              V8 without JIT (unless MADEIRA_JITLESS=0); the browser passes it to its renderers
+ *   --disable-component-update        no Unzipper utility retried every second
+ * A switch the command line already carries is left as it is. Ubisoft's libcef.dll drops the browser's whole command line
+ * when its cef_settings_t.command_line_args_disabled is set; virtual_ios.c ios_ubi_cef_patch keeps it for the libcef.dll
+ * builds it knows. A command line with a bare "--" is not touched (Chromium stops reading switches there). */
+enum { UBI_NOT_CEF = 0, UBI_BROWSER = 1, UBI_HELPER = 2 };
+enum { UBI_IN_PROCESS_GPU = 1, UBI_SITE_ISOLATION = 2, UBI_RENDERER_LIMIT = 4, UBI_NO_COMPONENT_UPDATE = 8,
+       UBI_JITLESS_ADDED = 16, UBI_OWN_JS_FLAGS = 32 };
+
+/* upc.exe without --type= is the browser (also `upc.exe ... -upc_game_starter`, a full CEF browser of its own);
+ * UplayWebCore.exe, or upc.exe with --type=, is a helper, left alone. */
+static int ubi_cef_kind( const WCHAR *image, int image_len, const WCHAR *cl, int cl_len )
+{
+    if (ios_image_name_is( image, image_len, "uplaywebcore.exe" )) return UBI_HELPER;
+    if (!ios_image_name_is( image, image_len, "upc.exe" )) return UBI_NOT_CEF;
+    return sc_switch_end( cl, cl_len, "--type=" ) >= 0 ? UBI_HELPER : UBI_BROWSER;
+}
+
+/* The browser's new command line, written to `out` (`cap` WCHARs with the NUL): `cl` with each missing switch of the list
+ * above appended. Returns the length and the UBI_* bits in *how, -1 when `cap` is too small, -2 when `cl` has a bare "--". */
+static int ubi_cef_cmdline( const WCHAR *cl, int cl_len, int jitless, WCHAR *out, int cap, int *how )
+{
+    static const struct { const char *sw, *add; int bit; } list[] = {
+        { "--in-process-gpu",               " --in-process-gpu",               UBI_IN_PROCESS_GPU },
+        { "--disable-site-isolation-trials", " --disable-site-isolation-trials", UBI_SITE_ISOLATION },
+        { "--renderer-process-limit=",      " --renderer-process-limit=1",     UBI_RENDERER_LIMIT },
+        { "--disable-component-update",     " --disable-component-update",     UBI_NO_COMPONENT_UPDATE },
+    };
+    int o = 0, k, i;
+    const char *add;
+
+    *how = 0;
+    if (cl_len < 0) return -1;
+    if (sc_switch_end( cl, cl_len, "--" ) >= 0) return -2;
+    if (cap < cl_len + 1 + 140 + 24) return -1;
+    for (k = 0; k < cl_len; k++) out[o++] = cl[k];
+    for (i = 0; i < (int)(sizeof(list) / sizeof(list[0])); i++)
+    {
+        if (sc_switch_end( cl, cl_len, list[i].sw ) >= 0) continue;
+        for (add = list[i].add; *add; add++) out[o++] = (WCHAR)*add;
+        *how |= list[i].bit;
+    }
+    if (sc_switch_end( cl, cl_len, "--js-flags=" ) >= 0) *how |= UBI_OWN_JS_FLAGS;
+    else if (jitless)
+    {
+        for (add = " --js-flags=--jitless"; *add; add++) out[o++] = (WCHAR)*add;
+        *how |= UBI_JITLESS_ADDED;
+    }
+    out[o] = 0;
+    return o;
+}
 #endif
 
 /**********************************************************************
@@ -1964,7 +2064,7 @@ NTSTATUS WINAPI NtCreateUserProcess( HANDLE *process_handle_ptr, HANDLE *thread_
     if (!process_attr) process_attr = &empty_attr;
 
     TRACE( "%s image %s cmdline %s parent %p machine %x\n", debugstr_us( &path ),
-           debugstr_us( &params->ImagePathName ), debugstr_us( &params->CommandLine ), parent, machine );
+           debugstr_us( &params->ImagePathName ), madeira_debugstr_cmdline_us( &params->CommandLine ), parent, machine );
 #ifdef WINE_IOS
     {
         /* Modified by BCD (2026-10-22, Epic Games milestone 2): a game started signed in has Epic's one-time sign-in code, the account's ID
@@ -1980,7 +2080,7 @@ NTSTATUS WINAPI NtCreateUserProcess( HANDLE *process_handle_ptr, HANDLE *thread_
             shown.MaximumLength = shown.Length + sizeof(WCHAR);
         }
         ERR("NtCreateUserProcess: image=%s cmdline=%s\n",
-            debugstr_us( &params->ImagePathName ), debugstr_us( &shown ));
+            debugstr_us( &params->ImagePathName ), madeira_debugstr_cmdline_us( &shown ));
         free( masked );
     }
 
@@ -2472,10 +2572,7 @@ NTSTATUS WINAPI NtCreateUserProcess( HANDLE *process_handle_ptr, HANDLE *thread_
                      * this line, not by binary greps or Valve's log. */
                     {
                         char tail[136];
-                        int tstart = o > 128 ? o - 128 : 0, ti;
-                        for (ti = 0; ti + tstart < o && ti < 135; ti++)
-                            tail[ti] = (char)nbuf[tstart + ti];
-                        tail[ti] = 0;
+                        ios_cmdline_tail( nbuf, o, tail );
                         dprintf(2, "[proc-gate] cmdline-tail(ml428): ...%s\n", tail);
                     }
                 }
@@ -2528,6 +2625,48 @@ NTSTATUS WINAPI NtCreateUserProcess( HANDLE *process_handle_ptr, HANDLE *thread_
                         "threads have no CPU area for the emulator loaded into it (it would take the app "
                         "down); the caller gets no console (env.MADEIRA_EC_CONHOST=1 starts it)\n" );
         return STATUS_ACCESS_DENIED;
+    }
+
+    /* madeira-bcd: Ubisoft Connect's Chromium -- see ubi_cef_kind. env.MADEIRA_UBI_CEF = 0 turns it off. After the conhost
+     * gate, outside the MADEIRA_CHILD_ARGS span that tests/host/check-child-args-crashpad.py compiles. */
+    {
+        const char *ubi = getenv( "MADEIRA_UBI_CEF" );
+        int kind = !(ubi && ubi[0] == '0' && !ubi[1])
+                 ? ubi_cef_kind( params->ImagePathName.Buffer, params->ImagePathName.Length / sizeof(WCHAR),
+                                 params->CommandLine.Buffer, params->CommandLine.Length / sizeof(WCHAR) )
+                 : UBI_NOT_CEF;
+        if (kind == UBI_BROWSER)
+        {
+            const char *jl = getenv( "MADEIRA_JITLESS" );
+            int cl_len = params->CommandLine.Length / sizeof(WCHAR), how = 0, o = -1, cap = cl_len + 200;
+            WCHAR *nbuf = malloc( cap * sizeof(WCHAR) );   /* leaks once per launch, as above */
+
+            if (nbuf) o = ubi_cef_cmdline( params->CommandLine.Buffer, cl_len, !(jl && jl[0] == '0'), nbuf, cap, &how );
+            if (o >= 0)
+            {
+                char tail[136];
+
+                params->CommandLine.Buffer = nbuf;
+                params->CommandLine.Length = o * sizeof(WCHAR);
+                params->CommandLine.MaximumLength = params->CommandLine.Length + sizeof(WCHAR);
+                ios_cmdline_tail( nbuf, o, tail );
+                dprintf( 2, "[ubi-cef] upc.exe browser: appended%s%s%s%s; V8 %s (a switch the command line had stays as it was; "
+                            "its helpers are not refused)\n",
+                         (how & UBI_IN_PROCESS_GPU) ? " --in-process-gpu" : "",
+                         (how & UBI_SITE_ISOLATION) ? " --disable-site-isolation-trials" : "",
+                         (how & UBI_RENDERER_LIMIT) ? " --renderer-process-limit=1" : "",
+                         (how & UBI_NO_COMPONENT_UPDATE) ? " --disable-component-update" : "",
+                         (how & UBI_JITLESS_ADDED) ? "--jitless (MADEIRA_JITLESS=0 turns it off)"
+                         : (how & UBI_OWN_JS_FLAGS) ? "flags left as the command line has them" : "JIT (MADEIRA_JITLESS=0)" );
+                dprintf( 2, "[ubi-cef] cmdline-tail: ...%s\n", tail );
+            }
+            else
+            {
+                free( nbuf );
+                dprintf( 2, "[ubi-cef] upc.exe browser: command line NOT rewritten (%s) -- it runs with Chromium's defaults\n",
+                         o == -2 ? "it has a bare --" : "no memory or room" );
+            }
+        }
     }
 
     /* madeira-bcd: a console's conhost.exe starts without a window (see
@@ -2601,19 +2740,20 @@ NTSTATUS WINAPI NtCreateUserProcess( HANDLE *process_handle_ptr, HANDLE *thread_
         }
         if (kind == SC_BROWSER)
         {
+            extern void ios_sc_reap_before_spawn( void );   /* virtual_ios.c, round 631 (R4 S1) */
             const char *jl = getenv( "MADEIRA_JITLESS" );
             const char *extra = getenv( "MADEIRA_SC_CEF_FLAGS" );
             int cl_len = params->CommandLine.Length / sizeof(WCHAR), how = 0, o = -1;
             int cap = cl_len + 160 + (extra ? (int)strlen( extra ) : 0);
             WCHAR *nbuf = malloc( cap * sizeof(WCHAR) );   /* leaks once per launch, as above */
 
+            ios_sc_reap_before_spawn();   /* a helper that ended out of memory gives its V8 reservations back first */
             if (nbuf)
                 o = sc_browser_cmdline( params->CommandLine.Buffer, cl_len, !(jl && jl[0] == '0'), extra,
                                         nbuf, cap, &how );
             if (o >= 0)
             {
                 char tail[136];
-                int tstart = o > 128 ? o - 128 : 0, ti;
 
                 params->CommandLine.Buffer = nbuf;
                 params->CommandLine.Length = o * sizeof(WCHAR);
@@ -2630,12 +2770,7 @@ NTSTATUS WINAPI NtCreateUserProcess( HANDLE *process_handle_ptr, HANDLE *thread_
                                                    : "JIT (MADEIRA_JITLESS=0)",
                          (how & SC_NOPROXY_ADDED) ? "--no-proxy-server added" : "its own proxy switch kept",
                          (how & SC_EXTRA_ADDED) ? "appended" : "unset" );
-                for (ti = 0; ti + tstart < o && ti < 135; ti++)
-                {
-                    WCHAR c = nbuf[tstart + ti];
-                    tail[ti] = (c >= 0x20 && c < 0x7f) ? (char)c : '?';
-                }
-                tail[ti] = 0;
+                ios_cmdline_tail( nbuf, o, tail );
                 dprintf( 2, "[sc-cef] cmdline-tail: ...%s\n", tail );
             }
             else
@@ -2680,17 +2815,11 @@ NTSTATUS WINAPI NtCreateUserProcess( HANDLE *process_handle_ptr, HANDLE *thread_
                 if (o >= 0)
                 {
                     char tail[136];
-                    int tstart = o > 128 ? o - 128 : 0, ti;
 
                     params->CommandLine.Buffer = nbuf;
                     params->CommandLine.Length = o * sizeof(WCHAR);
                     params->CommandLine.MaximumLength = params->CommandLine.Length + sizeof(WCHAR);
-                    for (ti = 0; ti + tstart < o && ti < 135; ti++)
-                    {
-                        WCHAR c = nbuf[tstart + ti];
-                        tail[ti] = (c >= 0x20 && c < 0x7f) ? (char)c : '?';
-                    }
-                    tail[ti] = 0;
+                    ios_cmdline_tail( nbuf, o, tail );
                     dprintf( 2, "[ea-cef] EADesktop.exe browser: %s; BackupRefPtr off (%s); V8 %s; %s; "
                                 "MADEIRA_EA_CEF_FLAGS %s\n",
                              (how & SC_SINGLE_ADDED) ? "--single-process added" : "already --single-process",
@@ -4090,6 +4219,27 @@ static char ios_t32_call_kind( uint64_t win, uint32_t v )
     return ' ';
 }
 
+/* Night round 2026-11-11 (agents G8 S4 and D S16; Resident Evil 5 FG7VCN, NMC748, FT2NRC: the game's protected layer ends the process itself, exit code 0x5732d0f or
+ * 91-92 million, from re5dx9.exe+0x16ca584 / a 32-bit anonymous page, no fault, so the fault dump never runs): the guest CODE at the exit. Rows of 32 bytes, "[term-code]",
+ * through the fault-safe reader; unreadable bytes are printed as "??". */
+static void ios_t32_code_rows( uint64_t win, const char *what, uint32_t at, unsigned before, unsigned after )
+{
+    unsigned off, len = before + after, k;
+    uint32_t from = at - before;
+
+    if (at < before) return;
+    for (off = 0; off < len; off += 32)
+    {
+        uint8_t b[32];
+        char hex[32 * 3 + 1];
+        unsigned n = len - off < 32 ? len - off : 32;
+
+        if (!ios_t32_read( win + from + off, b, n )) { snprintf( hex, sizeof(hex), "??" ); }
+        else for (k = 0; k < n; k++) snprintf( hex + k * 3, 4, "%02x ", b[k] );
+        dprintf( 2, "[term-code] %s %+d: %s\n", what, (int)off - (int)before, hex );
+    }
+}
+
 void ios_wow32_stack_dump( const char *tag )
 {
     extern void *get_cpu_area( USHORT machine );
@@ -4131,6 +4281,48 @@ void ios_wow32_stack_dump( const char *tag )
         shown++;
     }
     dprintf( 2, "[term-stack] 32-bit %s: %u of 256 stack dwords read, %u return address(es)\n", tag, ndw, shown );
+    /* the code at the exit, with env.MADEIRA_X86_FAULT_DUMP = 1 (the row of the game carries it already): 64 bytes at EIP (the return address of the system call's
+     * stub lies in ntdll; in D-S16's log EIP was a 32-bit anonymous page), and 192 bytes before and 32 after the first return address of the program's own image
+     * (the first module of the PEB32 list): the check that ended the process. Three times a process at most. */
+    {
+        extern int ios_x86_fault_switch( void );
+        static volatile int code_n;
+
+        if (ios_x86_fault_switch() && __sync_add_and_fetch( &code_n, 1 ) <= 3)
+        {
+            const struct ios_t32_mod *m = NULL;
+            uint32_t eip = (uint32_t)c->Eip, mret = 0;
+
+            for (k = 0; k < nmods; k++) if (eip >= mods[k].base && eip - mods[k].base < mods[k].size) { m = &mods[k]; break; }
+            dprintf( 2, "[term-code] 32-bit %s: EIP 0x%08x (%s+0x%x); EAX=%08x ECX=%08x EDX=%08x ESI=%08x EDI=%08x; %u modules (MADEIRA_X86_FAULT_DUMP)\n", tag, eip,
+                     m ? m->name : "no module (an anonymous page)", m ? eip - m->base : 0, (unsigned)c->Eax, (unsigned)c->Ecx, (unsigned)c->Edx, (unsigned)c->Esi,
+                     (unsigned)c->Edi, nmods );
+            ios_t32_code_rows( win, "at EIP", eip, 0, 64 );
+            for (i = 0; i < ndw && nmods && !mret; i++)
+                if (stack[i] >= mods[0].base && stack[i] - mods[0].base < mods[0].size && ios_t32_call_kind( win, stack[i] ) != ' ') mret = stack[i];
+            if (mret)
+            {
+                dprintf( 2, "[term-code] first return address of the program's image %s: 0x%08x (%s+0x%x), 192 bytes before and 32 after\n", mods[0].name, mret, mods[0].name,
+                         mret - mods[0].base );
+                ios_t32_code_rows( win, "ret", mret, 192, 32 );
+            }
+            else dprintf( 2, "[term-code] no return address of the program's image on the first %u stack dwords\n", ndw );
+        }
+    }
+}
+#endif
+
+#ifdef WINE_IOS
+/* madeira-bcd kill-reap (env.MADEIRA_KILL_REAP = 1; default off): a Windows process that ANOTHER process ends with
+ * NtTerminateProcess( its handle ) never runs process_exit_wrapper (the server's SIGQUIT does not arrive on iOS and its threads
+ * end in abort_thread), so its FEX code buffers, guest window, fd cache and child-table slot stayed allocated for the rest of the
+ * session; on Windows they are freed. With the switch the caller runs, after the server accepted the kill, the teardown the storm
+ * guard already runs for a child ended from outside (ios_end_child_process_async). Read at each such call. */
+static int ios_kill_reap_enabled(void)
+{
+    const char *e = getenv( "MADEIRA_KILL_REAP" );
+
+    return e && e[0] == '1' && !e[1];
 }
 #endif
 
@@ -4171,6 +4363,9 @@ NTSTATUS WINAPI NtTerminateProcess( HANDLE handle, LONG exit_code )
 {
     unsigned int ret;
     BOOL self;
+#ifdef WINE_IOS
+    void *reap_peb = NULL;   /* madeira-bcd kill-reap: the PEB of the process this call ends from outside */
+#endif
 
 #ifdef WINE_IOS
     if (!handle) ios_exiting_record( NtCurrentTeb()->Peb, exit_code );   /* madeira-bcd (round 630): see ios_exiting_status */
@@ -4198,7 +4393,11 @@ NTSTATUS WINAPI NtTerminateProcess( HANDLE handle, LONG exit_code )
         }
     }
     if ((unsigned int)exit_code == 0xE0000008u && handle == NtCurrentProcess())
+    {
+        extern void ios_sc_note_oom_exit( void );   /* virtual_ios.c, round 631 (R4 S1) */
         ios_term_oom_record( NtCurrentTeb() );
+        ios_sc_note_oom_exit();   /* a SocialClubHelper.exe's V8 reservations are released before the next one starts */
+    }
     {
         static int term_log_count = 0;
         /* iOS-Madeira [term-stack] (task#29): also fire on ANY nonzero exit_code
@@ -4399,6 +4598,14 @@ NTSTATUS WINAPI NtTerminateProcess( HANDLE handle, LONG exit_code )
         /* noreturn */
     }
 #endif
+#ifdef WINE_IOS
+    if (handle && handle != NtCurrentProcess() && ios_kill_reap_enabled())
+    {   /* madeira-bcd kill-reap: ask the server who it is BEFORE it dies */
+        PROCESS_BASIC_INFORMATION pbi;
+
+        if (!NtQueryInformationProcess( handle, ProcessBasicInformation, &pbi, sizeof(pbi), NULL )) reap_peb = pbi.PebBaseAddress;
+    }
+#endif
     SERVER_START_REQ( terminate_process )
     {
         req->handle    = wine_server_obj_handle( handle );
@@ -4407,6 +4614,18 @@ NTSTATUS WINAPI NtTerminateProcess( HANDLE handle, LONG exit_code )
         self = reply->self;
     }
     SERVER_END_REQ;
+#ifdef WINE_IOS
+    if (reap_peb && !ret && !self && reap_peb != NtCurrentTeb()->Peb)
+    {   /* madeira-bcd kill-reap: release what the ended process held, as its exit would have (a live child only: the call
+         * claims it, so a racing exit is not torn down twice; never the owner of the fixed-base image) */
+        extern int ios_exe_win_owned_by( void *peb );
+        extern int ios_end_child_process_async( void *peb, int status );
+
+        if (!ios_exe_win_owned_by( reap_peb ) && ios_end_child_process_async( reap_peb, (int)exit_code ))
+            dprintf( 2, "[kill-reap] madeira-bcd: process peb=%p ended by another process (exit code 0x%x): its code buffers, "
+                        "window and handles are released as an exit would\n", reap_peb, (unsigned int)exit_code );
+    }
+#endif
     if (self)
     {
 #ifdef WINE_IOS
@@ -4528,6 +4747,23 @@ NTSTATUS WINAPI NtQueryInformationProcess( HANDLE handle, PROCESSINFOCLASS class
     ULONG len = 0;
 
     TRACE( "(%p,0x%08x,%p,0x%08x,%p)\n", handle, class, info, size, ret_len );
+
+    /* madeira-bcd (build 663; tools/patch-wine-kernel32-usd-direct.py): BCD's private class 1011, the host address where
+     * KUSER_SHARED_DATA really is (0 while it is not mapped yet). The 64-bit kernel32's GetTickCount and GetTickCount64 ask once
+     * and read the page there: at 0x7ffe0000, below iOS's 4 GB floor, every read was a Mach exception that the sub-floor service
+     * answered from this same page (RDR2: about 20,000 a second). The calling process only. Outside the switch: 1011 is no
+     * member of PROCESSINFOCLASS. */
+    if (class == (PROCESSINFOCLASS)1011)
+    {
+        extern unsigned long long ios_get_real_usd(void);
+
+        if (size != sizeof(ULONG_PTR)) return STATUS_INFO_LENGTH_MISMATCH;
+        if (handle != GetCurrentProcess()) return STATUS_INVALID_PARAMETER;
+        if (!info) return STATUS_ACCESS_VIOLATION;
+        *(ULONG_PTR *)info = (ULONG_PTR)ios_get_real_usd();
+        if (ret_len) *ret_len = sizeof(ULONG_PTR);
+        return STATUS_SUCCESS;
+    }
 
     switch (class)
     {

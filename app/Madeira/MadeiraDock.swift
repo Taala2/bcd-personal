@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright 2026 125hz
 // Madeira Converter Exception: see LICENSE-EXCEPTION.md
+// Portions copyright 2026 Connor Gow: code taken from https://github.com/willfaust/Madeira (pull request #464)
+// under GPL-3.0-or-later and modified for BCD in November 2026. See THIRD-PARTY-NOTICES.md.
+// Portions copyright 2026 Russell Barton: code taken from https://github.com/thebcd69/bcd-games (pull request #46 by rbarton124)
+// under GPL-3.0-or-later with the Madeira Converter Exception and modified for BCD in November 2026. See THIRD-PARTY-NOTICES.md.
+// Portions copyright 2026 Vugar: code taken from https://github.com/willfaust/Madeira (pull request #572, branch steam-friends-pr-572-replacement)
+// under GPL-3.0-or-later and modified for BCD in November 2026. See THIRD-PARTY-NOTICES.md.
 
 import Foundation
 import Darwin
@@ -60,6 +66,37 @@ enum MadeiraDock {
         Bundle.main.url(forResource: "dockhost", withExtension: "exe", subdirectory: "arm64ec-windows") != nil
     }
     static let executable = "C:\\windows\\system32\\dockhost.exe"
+    /// Night round 2026-11-11 (D S2): this Dock start's launch option is Paradox's launcher stub (SteamDirectStart.isParadoxLauncher); set by startDock,
+    /// read by the session setup on the main thread (ContentView), where it asks for msiexec and the msi DLLs.
+    nonisolated(unsafe) static var paradoxLauncherSession = false
+    /// Night round 2026-11-11 (T1 S7): the game of the Dock start that is on its way (set by `configure`), for the log lines about its install record.
+    nonisolated(unsafe) static var launchedGame: DockGame?
+    /// This launch passed a Friends status to Dock (configure); false again once the session's files are cleaned up. The in-game menu
+    /// reads Dock's friends list only while it is true (DockFriendsMenu.swift).
+    nonisolated(unsafe) static var friendsRequested = false
+
+    /// Night round 2026-11-11 (T1 S7; Counter-Strike 2 G7B80A and tur630's 9JZ3V7, 0NBYBW): the numbers of the game's install record (appmanifest) and whether
+    /// its downloading folder exists, for a launch that Valve's client refused with an update error (17, 19, 20). Numbers only, no path. nil when the record
+    /// cannot be read. The host waits for these errors and says "installing content" although nothing may install; this line shows the record's state.
+    static func appStateLine(manifest data: Data, downloading: Bool) -> String? {
+        guard data.count <= 1 << 20, var parser = try? SteamKeyValues(data), let root = try? parser.read(), let state = root["AppState"] else { return nil }
+        func number(_ key: String) -> String { state[key]?.string.flatMap { Int($0) }.map(String.init) ?? "-" }
+        return "[dock-app-state] StateFlags=\(number("StateFlags")) buildid=\(number("buildid")) TargetBuildID=\(number("TargetBuildID")) "
+            + "LastUpdated=\(number("LastUpdated")) SizeOnDisk=\(number("SizeOnDisk")) BytesToDownload=\(number("BytesToDownload")) "
+            + "BytesDownloaded=\(number("BytesDownloaded")) downloading=\(downloading ? 1 : 0)"
+    }
+
+    /// The same for the launched game, read from the drive.
+    static func appStateLine(game: DockGame, drive: URL) -> String? {
+        let folder = drive.appendingPathComponent(game.library, isDirectory: true)
+        guard let data = try? Data(contentsOf: folder.appendingPathComponent("appmanifest_\(game.id).acf")) else { return nil }
+        return appStateLine(manifest: data, downloading: FileManager.default.fileExists(atPath: folder.appendingPathComponent("downloading/\(game.id)").path))
+    }
+    /// The launch option's program is Paradox's launcher stub (dowser.exe in the game's Launcher folder), which installs the Paradox Launcher by running
+    /// "msiexec" and a WiX bundle that loads msi.dll (Prison Architect KQ3E87, Hearts of Iron IV QZB4QB). The file name only, any folder or case.
+    static func isParadoxLauncher(executable: String) -> Bool {
+        executable.replacingOccurrences(of: "\\", with: "/").split(separator: "/").last.map { $0.lowercased() == "dowser.exe" } ?? false
+    }
 
     static var prefix: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!.appendingPathComponent("wine")
@@ -119,15 +156,22 @@ enum MadeiraDock {
                 if !libraries.contains(where: { $0.caseInsensitiveCompare(relative) == .orderedSame }) { libraries.append(relative) }
             }
         }
+        // Libraries on external drives (ExternalDrives.swift). They are reached
+        // through drive_c/External/<name> links, so they resolve outside drive_c.
+        let external = ExternalDrives.steamLibraries
+        for library in external where !libraries.contains(where: { $0.caseInsensitiveCompare(library) == .orderedSame }) {
+            libraries.append(library)
+        }
         var result: [DockGame] = []
         // Apps that only lend depots to another install ("Shared Only", e.g. GTA V
         // Enhanced's RGL/SC 1899670) have a record but nothing to start. A game that
         // lends depots but has its own installed too (a base game whose depots its
         // expansions share) stays: the same test as the uninstall (SteamInstall.swift).
         var lent: [Int: Set<String>] = [:], installed: [Int: Set<String>] = [:]
-        for library in libraries.prefix(16) {
+        for library in libraries.prefix(32) {
             let folder = drive.appendingPathComponent(library, isDirectory: true)
-            guard folder.resolvingSymlinksInPath().path.hasPrefix(drive.resolvingSymlinksInPath().path + "/"),
+            let isExternal = external.contains { $0.caseInsensitiveCompare(library) == .orderedSame }
+            guard isExternal || folder.resolvingSymlinksInPath().path.hasPrefix(drive.resolvingSymlinksInPath().path + "/"),
                   let names = try? fm.contentsOfDirectory(atPath: folder.path) else { continue }
             for file in names.sorted().prefix(2000) where file.hasPrefix("appmanifest_") && file.hasSuffix(".acf") {
                 guard let data = try? Data(contentsOf: folder.appendingPathComponent(file)) else { continue }
@@ -153,13 +197,23 @@ enum MadeiraDock {
     }
 
     /// Everything a launch needs, checked before any sign-in is handed over.
-    static func validate(_ game: DockGame, drive: URL, bundled: Bool = MadeiraDock.bundled) throws {
+    /// Night round 2026-11-11 (A1 S7, A2 S7): `clientStatus` says which Valve build is in the prefix; a build the Dock host does not support
+    /// (SteamRuntimeFiles.supportedClientSHA256) is refused here with words and the fingerprint in the log, instead of after the whole sign-in
+    /// with host result 30 (SQDE4K, T12JFC, AT5CSS). A supported build passes unchanged.
+    static func validate(_ game: DockGame, drive: URL, bundled: Bool = MadeiraDock.bundled,
+                         clientStatus: (URL) -> SteamRuntimeFiles.ClientStatus = SteamRuntimeFiles.clientStatus(drive:)) throws {
         guard bundled else { throw DockError.message("This copy of BCD was built without BCD Dock. Build the Dock host with build/madeira-dock/build.sh.") }
         guard validAppID(game.id), validFolderName(game.installDir) else {
             throw DockError.message("The Steam install record for this game has an invalid App ID or folder name.")
         }
-        guard FileManager.default.fileExists(atPath: drive.appendingPathComponent(SteamRuntimeFiles.relativeRoot + "/steamclient64.dll").path) else {
+        switch clientStatus(drive) {
+        case .missing:
             throw DockError.message("First download Valve's client components: the Steam client files aren't installed yet.")
+        case .unsupported(let sha):
+            SteamLog.event("[dock-client] unsupported sha256=\(sha) (supported: \(SteamRuntimeFiles.supportedClientSHA256.sorted().map { String($0.prefix(12)) }.joined(separator: ", ")))")
+            throw DockError.message(SteamRuntimeFiles.unsupportedClientWords(sha: sha))
+        case .supported:
+            break
         }
         var isFolder: ObjCBool = false
         guard game.installed,
@@ -228,7 +282,9 @@ enum MadeiraDock {
             guard let result, result != 0 else { return nil }
             if result == 30 {
                 if fields["session-unsupported-client"] == "1" || fields["session-user-method-mismatch"] != nil {
-                    return "This build of the Steam client isn't one BCD Dock supports. Dock works only with client builds it has checked; the client's fingerprint and the check that failed are in the log."
+                    // Night round 2026-11-11 (A1 S7): from build 652 the app refuses such a client before the start (validate); a host that
+                    // still answers 30 names the way out too (Settings > BCD Dock > Replace client components).
+                    return "This build of the Steam client isn't one BCD Dock supports. Dock works only with client builds it has checked; the client's fingerprint and the check that failed are in the log. Open Settings > BCD Dock and choose Replace client components, then try again."
                 }
                 return "BCD Dock couldn't set up the Steam session (code 30). Export the log to see which check failed."
             }
@@ -266,7 +322,8 @@ enum MadeiraDock {
                 switch fields["ceg-result"].flatMap(Int.init) {
                 case -1: return "Preparing this game's executable took Steam too long. Check your connection, then try again."
                 // Round 630 (agent A1 S14, FRKBN1): Valve's client accepted the request and said it started no job (ceg-request=0); the
-                // old words ("never began") read as a timeout. Auto-tune's dock-ceg-no-job tries env.MADEIRA_DOCK_CEG_ZERO_JOBS = 1 next.
+                // old words ("never began") read as a timeout. Build 632 starts such a game (the Dock reports ceg-already-prepared); this
+                // answer is left for an OK with no job after a request that had to be repeated (the files were not prepared).
                 case 0: return "Steam started no job to prepare this game's executable, so BCD did not start the game. Use Check and repair files in the game's options, then try again; if it keeps happening, export the log."
                 case 10: return "Steam is still busy with this game, updating or running it. Wait a moment, then try again."
                 case -4: return "Steam couldn't prepare this game's executable because the Windows service manager it needs didn't start."
@@ -332,6 +389,12 @@ enum MadeiraDock {
             case 25: return "Steam lists this game as not released yet."
             case 26: return "Steam lists this game as unavailable in your region."
             case 35: return "Steam reports this account as playing in another session. Quit the game on your other device, then start it here again."
+            // Night round 2026-11-11 (G8 S5; R.E.P.O. A272J4): Valve's refusal 33 comes without a reading in the repository; in Steam's own enum it is the
+            // refusal for an app that is locked (Family Sharing: the owner is playing something else). "may" because the reading is not proved.
+            case 33: return "Steam refused to start this game (reason 33). If this game is shared with you through Steam Family Sharing, its owner may be playing something right now; try again later, or start it from your own library."
+            // Night round 2026-11-11 (G5 S5; GeoGuessr PX27QG, Hollow Knight 2KHWEG and 5RHVB9): Valve's client refused the launch before it ran anything. The
+            // launch entry's own fields are in the log now ("[madeira-dock] launch option N entry:"), so the next log names what the client disliked.
+            case 45: return "Steam's client refused this game's launch before it ran anything (code 45). Choose another launch option on the game's page, if it lists more than one, then try again. If it has only one, export the log."
             // Round 624 (agent N S13; QH4XFC, V71SS6, 9Z31S2): the 32-bit program's 4 GB address window was refused ("[wow-window] refused");
             // 58 of 61 logs with this error are installs without the limit. With the limit the generic words stay (other causes).
             case 46:
@@ -358,6 +421,8 @@ enum MadeiraDock {
         "session-timeout-subscription-count", "session-timeout-app-listed", "session-timeout-still-online",
         // round 630 (444TS8; tools/patch-dock-licence-wait.py): the licence wait moved after a late sign-in, ms from the logon start
         "session-licence-wait-ms",
+        // round 632 (tools/patch-dock-licence-ask.py): ms from the sign-in to an ownership answer that came before the old fixed 5 s
+        "session-licence-answer-ms",
         "session-online-blip", "session-online-blips", "session-online-lost", "session-entitlement-source",
         "session-offline-abi", "session-offline-requested", "session-offline-can", "session-offline-logon-result",
         "session-offline-logon-retry", "session-offline-logon-state", "session-offline-callback-id",
@@ -368,8 +433,11 @@ enum MadeiraDock {
         "launch-config-wait", "launch-config-gave-up", "launch-session-wait", "launch-session-gave-up",
         "ceg-request", "ceg-request-result", "ceg-request-busy", "ceg-server-result", "ceg-job-result",
         "ceg-finished-jobs", "ceg-result", "ceg-disabled", "ceg-unsupported-client",
-        // round 630 (FRKBN1; tools/patch-dock-ceg-zero-jobs.py): an accepted request with zero jobs went on to the launch (the key's experiment)
-        "ceg-zero-jobs-launch",
+        // round 632 (upstream Madeira #519; tools/patch-dock-ceg-service-start.py, -retry.py, -already-prepared.py): the start of Valve's
+        // client service (0 running, a Win32 error, -1 it stopped again; the 1053 retry), the number of a repeated request, and an OK with no job
+        "ceg-service-start", "ceg-service-start-retry", "ceg-request-retry", "ceg-already-prepared",
+        // night round 2026-11-11 (tools/patch-dock-ceg-service-restart.py): the service seen again after its settle (1 running, 0 gone) and the rounds it was started again
+        "ceg-service-alive-after-settle", "ceg-service-restarts",
         "ceg-scm", "ceg-scm-started", "ceg-scm-error", "ceg-service-registered", "ceg-service-install", "ceg-service-stop", "ceg-scm-stopped",
         "game-scm", "game-scm-timeout", "launch-keep-alive",
         // round 624 (Steam 113; tools/patch-dock-steam-readback.py): the published values read back while the game starts (bits:
@@ -384,14 +452,30 @@ enum MadeiraDock {
         "launch-install-directory-expected-length", "launch-install-directory-got",
         // round 630 (BN3SXW; tools/patch-dock-registry-events.py): which part of the Steam client entries step ended a start with 42
         "launch-registry-step", "launch-registry-error", "launch-registry-retry",
+        // night round 2026-11-11 (tools/patch-dock-registry-create.py): a missing key it created (1 ActiveProcess, 2 the machine key), a create that
+        // failed, and the keys the host could see when the start still ended in 42 (bit 0 HKLM Software\Valve\Steam ... bit 4 the ActiveProcess key)
+        "launch-registry-created", "launch-registry-create-error", "launch-registry-probe",
+        // night round 2026-11-11 (tools/patch-dock-steam-views.py): the 32-bit view's mirror (a mask) and the five calls of steam_api as a mask (63: it finds Steam)
+        "launch-view-mirror", "launch-view-error", "launch-host-pid", "launch-steamapi-probe-pre", "launch-steamapi-probe", "launch-steamapi-probe-t", "launch-steamapi-probe-running",
         "launch-client-discovery-published", "launch-request-submitted", "launch-game-running",
         "launch-game-ended", "launch-discovery-restored", "launch-host-result",
+        // Steam Friends (Madeira #572, madeira-dock #10; src/friends.c): counts and result codes only, never a SteamID or a name.
+        // friends-available=0 is the one line of a session with Friends off (the default).
+        "friends-available", "friends-own-state", "friends-signin-available", "friends-signin", "friends-subscribed", "friends-persona-chosen",
+        "friends-requested", "friends-own-game", "friends-total", "friends-valid-ids", "friends-online", "friends-named", "friends-playing",
+        "friends-seconds", "friends-count", "friends-cmd-seq", "friends-cmd-result", "friends-state-set", "friends-invite-connect",
+        "friends-invite-received", "friends-persona-flags", "friends-persona-updates",
         "shutdown-begin", "shutdown-complete", "probe-result"]
     /// The host's report rounds (madeira-dock src/main.c).
     static let reportRounds: Set<String> = ["ml1820", "ml1830", "ml1860", "ml1870", "ml1970", "ml1990", "ml2000", "ml2011", "ml2015", "ml2016"]
 
+    /// The largest report read. Dock bounds its friends lines, but a long session
+    /// still writes more than the old 32 KB, and a report past the cap would hide
+    /// probe-result at game end.
+    static let reportCap = 1 << 20
+
     static func parseReport(_ data: Data) -> Report {
-        guard data.count <= 32768, let text = String(data: data, encoding: .utf8) else { return Report() }
+        guard data.count <= reportCap, let text = String(data: data, encoding: .utf8) else { return Report() }
         var report = Report()
         // Ignore a partial final line until the writer completes and flushes it.
         for line in text.replacingOccurrences(of: "\r\n", with: "\n")
@@ -425,7 +509,7 @@ enum MadeiraDock {
         let url = drive.appendingPathComponent("madeira-dock.txt")
         guard let file = try? FileHandle(forReadingFrom: url) else { return lastReport }
         defer { try? file.close() }
-        guard let data = try? file.read(upToCount: 32769), data.count <= 32768 else { return lastReport }
+        guard let data = try? file.read(upToCount: reportCap + 1), data.count <= reportCap else { return lastReport }
         let report = parseReport(data)
         for key in report.fields.keys.sorted() where report.fields[key] != lastReport.fields[key] {
             SteamLog.event("[dock-report] \(key)=\(report.fields[key]!)")
@@ -454,6 +538,13 @@ enum MadeiraDock {
         if let url = transferURL { try? FileManager.default.removeItem(at: url) }
         unsetenv("MADEIRA_DOCK_AUTH_FILE")
         unsetenv("MADEIRA_DOCK_OFFLINE")
+        // The friends feed and command too: a host that did not end cleanly
+        // leaves them, and a later session must not show its list.
+        friendsRequested = false
+        // madeira-bcd (U6 counter-review M2): only for a player who ever chose a Friends status. Without one the Dock writes no Friends
+        // file (madeira-dock src/friends.c: disabled() without MADEIRA_DOCK_PERSONA_STATE), so there is nothing to remove and the app's
+        // start, sign-out and Dock start stay as they were.
+        if SteamOnlineStatus.everChosen { DockFriends.shared.endSession() }
     }
 
     /// Writes the one-use transfer to protected Application Support storage
@@ -490,13 +581,25 @@ enum MadeiraDock {
 
     /// The host's environment for one launch.
     static func configure(_ game: DockGame, launchOption: UInt32 = 0) {
+        launchedGame = game
         for key in ["MADEIRA_STEAM_HOST_PROBE", "MADEIRA_STEAM_HOST_SESSION", "MADEIRA_STEAM_HOST_LOGIN", "MADEIRA_STEAM_HOST_LAUNCH"] {
             setenv(key, "1", 1)
         }
         setenv("MADEIRA_STEAM_HOST_APPID", String(game.id), 1)
+        // Steam Friends (madeira-dock README, "Friends"): opt-in. Only a chosen status (Online, Away, Invisible) is passed; with Offline, the
+        // default, the variable is removed and Dock leaves Friends off for the session, as before Friends existed.
+        if let state = SteamOnlineStatus.current.personaState {
+            setenv("MADEIRA_DOCK_PERSONA_STATE", String(state), 1)
+        } else {
+            unsetenv("MADEIRA_DOCK_PERSONA_STATE")
+        }
+        friendsRequested = SteamOnlineStatus.current != .offline
+        SteamLog.event("[dock-launch] friends=\(friendsRequested ? 1 : 0)")
         setenv("MADEIRA_STEAM_HOST_LAUNCH_OPTION", String(launchOption), 1)
         setenv("MADEIRA_STEAM_HOST_CLIENT_DIR", SteamRuntimeFiles.windowsRoot, 1)
         setenv("MADEIRA_STEAM_HOST_EXPECTED_INSTALL", game.windowsInstallPath, 1)
+        // madeira-bcd: the same folder is the program being played for the session's code-buffer budget (virtual_ios.c ios_pool_fg_class).
+        setenv("BCD_GAME_FOLDER", game.windowsInstallPath, 1)
         setenv("MADEIRA_STEAM_HOST_LOG", "C:\\madeira-dock.txt", 1)
         // The install record lists per-user executables: Dock asks Valve's client to prepare
         // them before it launches. env.MADEIRA_DOCK_CEG = 0 never asks.
@@ -663,4 +766,22 @@ enum DockOffline {
         NotificationCenter.default.post(name: changed, object: nil)
     }
     static let changed = Notification.Name("MadeiraDockOfflineChanged")
+}
+
+/// The Steam status Dock signs in to Friends with (Settings › Accounts › Steam › Friends),
+/// passed to Dock as MADEIRA_DOCK_PERSONA_STATE; the raw value is Steam's
+/// persona state. Offline, the default, leaves Friends off for the session:
+/// Dock then sends Steam nothing of its own (madeira-dock README, "Friends").
+enum SteamOnlineStatus: Int, CaseIterable, Identifiable {
+    case online = 1, away = 3, invisible = 7, offline = 0
+    var id: Int { rawValue }
+    private static let key = "steamOnlineStatus"
+    /// Whether a status was ever stored (madeira-bcd): Friends ran, or could have, only for such a player.
+    static var everChosen: Bool { UserDefaults.standard.object(forKey: key) != nil }
+    static var current: SteamOnlineStatus {
+        get { (UserDefaults.standard.object(forKey: key) as? Int).flatMap(SteamOnlineStatus.init(rawValue:)) ?? .offline }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: key) }
+    }
+    /// What the launch passes to Dock: nil for Offline (madeira-bcd: the variable is then not set at all).
+    var personaState: Int? { self == .offline ? nil : rawValue }
 }

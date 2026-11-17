@@ -1519,6 +1519,11 @@ struct ContentView: View {
         guard entry.launchWindowsPath.utf8.count < 1024, entry.launchArguments.utf8.count < 4096 else {
             library.error = "The program path or its launch arguments are longer than BCD allows."; return
         }
+        // madeira-bcd (GOG Galaxy features, per game and off by default: env.BCD_GOG_GALAXY; BCDGOG/Galaxy/BCDGOGGalaxy.swift): a GOG game BCD installed
+        // whose switch is on gets BCD's answer on the Galaxy SDK's local port while it runs. The first such start of a build reads the game's
+        // Galaxy client from GOG first and runs this start again. Any other start goes straight on and opens nothing.
+        let galaxyEntry = entry
+        guard BCDGOGGalaxy.shared.preLaunch(galaxyEntry, retry: { startLibraryEntry(galaxyEntry) }) else { return }
         // madeira-bcd personal (2026-11-03): a 32-bit NW.js game starts on BCD's 64-bit NW.js (BCDNWJS64.swift); its
         // first start downloads that NW.js once and starts the game when it is ready.
         // A Play while it downloads shows the message again and starts nothing: the download's own end starts the game.
@@ -1539,11 +1544,6 @@ struct ContentView: View {
             })
             return
         }
-        // madeira-bcd (GOG Galaxy features, per game and off by default: env.BCD_GOG_GALAXY; BCDGOG/Galaxy/BCDGOGGalaxy.swift): a GOG game BCD installed
-        // whose switch is on gets BCD's answer on the Galaxy SDK's local port while it runs. The first such start of a build reads the game's
-        // Galaxy client from GOG first and runs this start again. Any other start goes straight on and opens nothing.
-        let galaxyEntry = entry
-        guard BCDGOGGalaxy.shared.preLaunch(galaxyEntry, retry: { startLibraryEntry(galaxyEntry) }) else { return }
         entry.configureLaunch()
         if nwjs64 == .run { BCDNWJS64Launch.export(entry) } else { BCDNWJS64Launch.disarm() }
         if BCDEpic.enabled { BCDEpic.shared.applyLaunch(entry) }   // madeira-bcd (2026-10-22): an Epic game's signed-in start goes through BCD Host (BCDEpicStart.swift)

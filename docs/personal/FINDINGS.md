@@ -240,6 +240,36 @@
   - `docs/local-build/BUILD-NUMBER`.
 - Найдено попутно и исправлено локально: список отката FEX в `build-xtajit64.sh` не содержал `LookupCache.cpp`, поэтому проверка l1-reclaim в CI читала бы уже пропатченный файл. Файл добавлен в список, тест это проверяет.
 
+## 5f. Upstream BCD 0.1.634 (вышел 2026-11-06, разбор без слияния, 2026-11-07)
+
+- Тег `v0.1.634` (e378a60), один коммит после 0.1.630, 467 файлов (+93 тыс. строк, большая часть — логи-фикстуры автонастройки). Пин FEX d4f2e6e → 049a1b1 (9 коммитов), пин Wine 469e08a → 52a6004.
+- Касается наших игр:
+  - **OpenGL** (Mesa 25 OSMesa + Zink на MoltenVK, либо OpenGL ES; `build/mesa-ios`, `build/win32u-unix/opengl_ios.c`). Выключен, пока не выбран в Direct3D › OpenGL. Правило автонастройки `opengl-only-no-context` ставит `gl-backend = zink` по тексту ошибки; он покрывает Godot 3 «Your video card driver does not support any of the supported OpenGL versions» — это **Metamorph**. Ren'Py у нас уже работает через ANGLE (`personal-renpy`).
+  - **Магазин itch.io**: вход по API-ключу, список купленных и бесплатных игр, установка Windows-архивов zip и 7z.
+  - **Работа в фоне** (Settings › Memory & performance › In the background, по умолчанию выключено): игра продолжает идти N минут после ухода BCD с экрана. Может помочь длинным тестам, логи которых обрываются при уходе в фон.
+  - FEX: «LookupCache: invalidate L1 entries under every dynamic L1 size» (35438bc); горячие SMC-страницы (`MADEIRA_SMC_HOT_PAGE`) и сохранение неиспользуемых загрузок (`MADEIRA_FEX_KEEP_DEAD_LOADS`) — только по включению.
+  - Новые выключенные ключи: `env.MADEIRA_SWP_LSE2` (Unity на старых устройствах), `env.MADEIRA_DIRCACHE`, `env.MADEIRA_FEX_CALLRET_RESERVE_KB` и др.
+- **Наши оверлеи FEX на новом пине 049a1b1** (проверено на чистой копии пина, `git archive`): callret-noscrub, renderer-tso, l1-reclaim, protect-diff накладываются (exit 0).
+  - Новый апстримный `patch-fex-ios-callret-small.py` правит тот же `CallRetStack.h`, что наш callret-noscrub. Если callret-small первым, наш не накладывается («anchor changed: `#ifdef FEX_IOS_HOST`»). В слитом `build-xtajit64.sh` наш идёт раньше (строки 228 и 246), и в этом порядке оба накладываются. Апстрим и сам требует запускать callret-small после всех ARM64EC-оверлеев.
+  - Изменения апстрима в `InvalidationTracker.cpp` (+100 строк) — в путях RWX/SMC (`HandleRWXAccessViolation`, `ProtectRWXIntervalsInternal`); `HandleMemoryProtectionNotification`, где работает protect-diff, не тронут.
+- **Пробное слияние** (`git merge-tree HEAD v0.1.634`): 4 конфликта, все — обе стороны дописали в одно место, решение «оставить оба»:
+  - `build-ipa.yml`: наши шаги проверок (noscrub, renderer-tso, l1-reclaim, protect-diff) и шаг `check-fex-callret-small`;
+  - `WineProcessBridge.m`: наши `unsetenv` (LDADDAL64, WASM_GUARD_TRIM, WASM_NO_TIERUP) и апстримные (REAL_SUSPEND, FIRST_PROC_OWN_EXIT_FLAG);
+  - `signal_arm64_ios.c`: наш `ios_mach_emulate_ldaddal64` и апстримный `ios_mach_swp_lse2` — независимые функции;
+  - `virtual_ios.c`: наш `ios_wasm_guard_trim` и апстримный `ios_oversize_reserve` в одном месте после неудачного jumbo-резерва; наш первым (узкий случай V8 WebAssembly).
+  - Изменения апстрима в `build/ntdll-unix` не касаются TLS-диагностики (0 упоминаний в диффе).
+- Не проверено: сборка Wine для iOS и IPA после слияния (только CI), поведение на устройстве.
+
+### Память V.0.7 (2026-11-07)
+
+- Режим `1` память не раздувает: куча FEX (`span-census live`) и пул JIT растут одинаково во всех режимах; `rxwhole` (переводы держатся не дольше апстрима) тоже дошёл до 6004 МБ. Пики: `1` — 5735 и 6141 МБ (лимит, вероятно jetsam), только замер — 5510 и 5569 МБ.
+- Главный расход: `nw.dll` (образ 137 МБ) отображается в каждом процессе Chromium отдельно, по своему адресу («mapped without a pool copy»), почти целиком «грязный» и уходит в сжатую память: 10–12 копий, ≈1,3–1,5 ГБ. Процессы: crashpad ×3, gpu ×2, renderer, utility (audio, network, storage, data_decoder, UtilWin ×4).
+- Аргументы запуска `--in-process-gpu --disable-features=AudioServiceOutOfProcess --enable-features=NetworkServiceInProcess2` (лог 7bc7fe10, 112 с): нет GPU- и звукового процесса, crashpad 1; 8 копий `nw.dll` вместо 12; пик 5091 МБ вместо 6141, плато ~4,8–5,0 ГБ; сжатая 1843 МБ вместо 2607. FPS 51, звук работал, пользователь: графика и звук в порядке, вышел сам. Сетевой процесс остался отдельным (у этого Chromium, видимо, старое имя флага).
+- **`env.MADEIRA_ARGS_APPEND = <программа> <аргументы>`** (локально, не собрано): `build/bcd_args_append.h`, вызов в `WineProcessBridge.m` после разбора `MADEIRA_ARGS`. Аргументы дописываются к программе, которую запускает BCD, только если это названная программа (для рабочего стола Wine — игра среди аргументов explorer); уже заданные игроком не повторяются; лог `[args-append]`; `unsetenv` для следующей игры. Правило `personal-nwjs-game-exe` v2: `Game.exe --in-process-gpu --disable-features=AudioServiceOutOfProcess --enable-features=NetworkServiceInProcess2,NetworkServiceInProcess`. В `personal-nwjs-any` не добавлено (имя программы заранее неизвестно). Своё `--enable-features` игры перекрывается (Chromium берёт последнее).
+  - Тест `tests/host/check-args-append.py` (заголовок компилируется и прогоняется по случаям; Windows и WSL — PASS), `check-personal-recommendations.py` PASS (Swift-часть — только CI). Строка каталога вставлена вручную функцией `render()` генератора и совпадает с выводом `scan()` в WSL; полный `--check` здесь не сходится из-за пустых подмодулей `wine`/`dxmt`, к ключу это не относится.
+  - Не проверено: Internship и другие NW.js-игры с этими флагами.
+- Долгосрочно: одна общая копия `nw.dll` на все процессы (отображение образов в Wine для iOS) — около 1,2 ГБ на любую Chromium-игру.
+
 ## 5e. Сборка 0.1.630 на устройстве (bf34ba0, CI 41827638998, 2026-11-04, 22:41–22:48)
 
 - Пресет FEX у всех — «BCD's own choice». Слова пользователя: Internship работает; CelSector вылетает по «Start»; Succum — чёрный экран без загрузки; V.0.7 — бесконечная загрузка.

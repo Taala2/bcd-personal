@@ -102,8 +102,12 @@ check('personal-nwjs-game-exe: Game.exe beside nw.dll or nw_elf.dll, with the li
                                                       {'name': 'game.exe', 'beside': 'nw.dll'}]}
       and all(w in nw['config'] for w in want))
 anynw = next((r for r in doc['rules'] if r['id'] == 'personal-nwjs-any'), None)
-check('personal-nwjs-any: any program beside nw.dll or nw_elf.dll, the same lines',
-      anynw is not None and nw is not None and anynw['config'][2:] == nw['config'][2:]
+appendline = ('env.MADEIRA_ARGS_APPEND = Game.exe --in-process-gpu --disable-features=AudioServiceOutOfProcess '
+              '--enable-features=NetworkServiceInProcess2,NetworkServiceInProcess')
+check('personal-nwjs-game-exe: the browser process gets the GPU, audio and network services in it (MADEIRA_ARGS_APPEND, Game.exe)',
+      nw is not None and appendline in nw['config'] and nw['version'] >= 2)
+check('personal-nwjs-any: any program beside nw.dll or nw_elf.dll, the same lines but the Game.exe arguments',
+      anynw is not None and nw is not None and anynw['config'][2:] == [l for l in nw['config'][2:] if l != appendline]
       and anynw['match'] == {'programs': [{'name': '*.exe', 'beside': 'nw_elf.dll'}, {'name': '*.exe', 'beside': 'nw.dll'}]})
 engine = ['env.MADEIRA_X64_IMAGE_NOCOPY = 1', 'env.MADEIRA_X64_NOCOPY_DATAIMP = 1', 'pool-split = 1', 'pool-low = 1']
 for rid, beside in (('personal-cef', 'libcef.dll'), ('personal-electron', 'chrome_100_percent.pak')):

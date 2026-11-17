@@ -3022,6 +3022,11 @@ jobs:
       - name: Check WebAssembly guard trim
         run: python3 tests/host/check-wasm-guard-trim.py
 
+      # madeira-bcd personal: env.MADEIRA_ARGS_APPEND adds arguments to the program BCD starts when it is the
+      # named one (the personal NW.js rule gives Game.exe Chromium switches: fewer processes, fewer nw.dll copies).
+      - name: Check arguments added to the game program
+        run: python3 tests/host/check-args-append.py
+
       # madeira-bcd personal: env.MADEIRA_WASM_NO_TIERUP (on unless 0) gives a Chromium renderer
       # --no-wasm-tier-up, whose jump-table rewrites FEX never saw (V.0.7, RPG Maker MZ on NW.js).
       - name: Check renderers keep WebAssembly on Liftoff

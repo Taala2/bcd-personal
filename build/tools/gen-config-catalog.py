@@ -130,6 +130,16 @@ OVERLAY = {
                         "refused (Internship [demo]). An out-of-bounds access past that size is no longer caught, so set it "
                         "per game. Logged as [wasm-guard-trim].",
                 "sources": ["build/ntdll-unix/virtual_ios.c"]},
+    "env.MADEIRA_ARGS_APPEND": {"category": "Wine core (ntdll)", "title": "Arguments added to the game's own program",
+                "kind": "text", "default": "",
+                "note": "Empty by default. \"<program> <arguments>\": when the program BCD starts is <program> (its file "
+                        "name; for a game in the Wine desktop, the game explorer starts), the arguments are added at the end "
+                        "of its command line, once each. Any other program (BCD Dock, an installer) gets nothing. For Chromium "
+                        "switches only the browser process reads: the personal NW.js rule sets Game.exe --in-process-gpu "
+                        "--disable-features=AudioServiceOutOfProcess --enable-features=NetworkServiceInProcess2,"
+                        "NetworkServiceInProcess (fewer processes, fewer copies of nw.dll: V.0.7 peaked at 5.1 GB instead of "
+                        "6.1). Logged as [args-append].",
+                "sources": ["app/Madeira/WineProcessBridge.m", "build/bcd_args_append.h"]},
     "env.MADEIRA_FEX_BAND_KEEP_MB": {"category": "Memory & JIT pool", "title": "Keep the lowest MB of the emulator's address range for the emulator",
                 "kind": "int", "default": "0",
                 "note": "Default 0 (off). N MB: reservations of 32 MB to 1 GB that BCD places above the game's own range "

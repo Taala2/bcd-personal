@@ -25,6 +25,7 @@
 #include <errno.h>
 #include <dirent.h>
 #include "../../build/madeira_cfg.h"   /* ml1095: one config file */
+#include "../../build/bcd_args_append.h"   /* madeira-bcd personal (2026-11-07): env.MADEIRA_ARGS_APPEND */
 #include "../../build/bcd_epic_mask.h"   /* madeira-bcd (2026-10-22): Epic's sign-in arguments masked in the argv lines */
 #include "BCDGraphicsRoutes.h"   /* madeira-bcd (round 602): env.MADEIRA_D3D8 = d3d9 and env.MADEIRA_DDRAW = cnc replace Wine's d3d8.dll and ddraw.dll in syswow64 */
 #include <sys/stat.h>
@@ -3204,6 +3205,17 @@ static void *wine_process_thread(void *arg) {
                 *w++ = 0;
             }
         }
+        {   /* madeira-bcd personal (2026-11-07): env.MADEIRA_ARGS_APPEND = "<program> <arguments...>" (build/bcd_args_append.h)
+             * adds Chromium switches to the browser process of an NW.js game from a personal engine rule. */
+            static char append_buf[1024];
+            const char *append_why = "unset";
+            const char *append = getenv("MADEIRA_ARGS_APPEND");
+            int appended = bcd_args_append_apply(exe_path, extra_argv, &extra_argc, 64, append,
+                                                 append_buf, sizeof(append_buf), &append_why);
+            if (append && *append)
+                dprintf(STDERR_FILENO, "[args-append] env.MADEIRA_ARGS_APPEND: %s (%d argument(s), program %s)\n",
+                        append_why, appended, exe_path);
+        }
 
         char *argv[72];
         int argc = 0;
@@ -3399,6 +3411,7 @@ static void wine_session_end(void)
     unsetenv("MADEIRA_ANON_LDADDAL64"); /* madeira-bcd personal: likewise */
     unsetenv("MADEIRA_WASM_GUARD_TRIM"); /* madeira-bcd personal: likewise */
     unsetenv("MADEIRA_WASM_NO_TIERUP"); /* madeira-bcd personal: a game's 0 is its own */
+    unsetenv("MADEIRA_ARGS_APPEND");    /* madeira-bcd personal: a game's arguments are its own */
     /* madeira-bcd: Diablo II: Resurrected's executable-section switches (thebcd69/bcd-games#4), likewise */
     unsetenv("MADEIRA_NTDLL_XSEC"); unsetenv("MADEIRA_SHARED_SECTION_EXEC"); unsetenv("MADEIRA_NTDLL_DATA_SYNC_RANGE");
     unsetenv("MADEIRA_FAULT_LOOP_GUEST_PROGRESS"); unsetenv("MADEIRA_D2R_PROBE_RECOVERY");

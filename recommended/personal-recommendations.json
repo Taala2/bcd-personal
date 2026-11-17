@@ -1,12 +1,12 @@
 {
   "format": 1,
-  "version": 1,
-  "generated": "2026-11-02",
+  "version": 2,
+  "generated": "2026-11-07",
   "rules": [
     {
       "id": "personal-nwjs-game-exe",
       "title": "NW.js games (Game.exe), personal",
-      "version": 1,
+      "version": 2,
       "match": {
         "programs": [
           {
@@ -31,6 +31,7 @@
         "env.MADEIRA_THREAD_STACK_SPILL = 1",
         "pool-split = 1",
         "pool-low = 1",
+        "env.MADEIRA_ARGS_APPEND = Game.exe --in-process-gpu --disable-features=AudioServiceOutOfProcess --enable-features=NetworkServiceInProcess2,NetworkServiceInProcess",
         {
           "line": "env.MADEIRA_GUEST_LOG = all",
           "minBuild": 598
@@ -41,6 +42,7 @@
         }
       ],
       "notes": [
+        "v2 (2026-11-07): MADEIRA_ARGS_APPEND gives the browser process Chromium switches that keep the GPU, audio and network services in it. V.0.7 (RPG Maker MZ on NW.js), build 630, iPhone16,1: 8 copies of nw.dll instead of 12, peak 5091 MB instead of 6141 (the limit), graphics and sound fine, 2 minutes. NetworkServiceInProcess2 alone left the network process separate; the older name is added. A game's own --enable-features is overridden by this one (Chromium keeps the last). Not tried on Internship yet.",
         "Internship[demo] (RPG Maker MZ on NW.js 0.48), build 627, iPhone16,1, iOS 27.0.1, 2026-11-02: about 6 minutes at 57-60 fps with these lines. Each one answers a cause seen in the device logs of runs 3-17: TLS_CLEAR_OWN_PROCESS the Chromium 'Check failed: current' fatals from cross-process TlsFree, X64_IMAGE_NOCOPY the pool EXHAUSTED on per-child copies of nw.dll, ANON_LDADDAL64 the 64-bit LDADDAL on an anonymous alias, WASM_GUARD_TRIM V8's 10 GB WebAssembly reservations, pool-split and pool-low the anonymous RWX pool exhaustion (wasm code commit). THREAD_STACK_SPILL and DATAIMP were in the working config; that each is needed is not shown.",
         "Upstream's nwjs-game-exe sets MADEIRA_CHILD_ARGS, which reaches --type=crashpad-handler children and stops the game at start (runs 1-2); this rule leaves it out.",
         "Tested on one game only."

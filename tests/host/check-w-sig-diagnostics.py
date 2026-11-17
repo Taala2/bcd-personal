@@ -218,8 +218,11 @@ int main( int argc, char **argv )
         }
         return 0;
     }
-    if (!W) { printf( "skip: no 4 GB-aligned window here\n" ); return 0; }
-    build_process( W );
+    /* madeira-bcd personal (2026-11-17): only the spin modes use the window; alias, rows and ring map their own memory. On the macos-15
+     * arm64 runner 0x2000000000 is inside the range every process has reserved, so W is NULL there and those three skipped needlessly. */
+    if (!W && strcmp( mode, "alias" ) && strcmp( mode, "alias-zero" ) && strcmp( mode, "rows" ) && strcmp( mode, "ring" ))
+    { printf( "skip: no 4 GB-aligned window here\n" ); return 0; }
+    if (W) build_process( W );
     if (!strcmp( mode, "spin" ))
     {
         setenv( "MADEIRA_X86_FAULT_DUMP", "1", 1 );

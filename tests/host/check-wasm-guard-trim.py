@@ -158,11 +158,12 @@ kp = src[src.index('ios_band_census( "jumbo reserve failed" );'):]
 kp = kp[:kp.index('ios_va_gap_probe( "jumbo reserve failed" );')]
 assert 'if (!ios_wasm_guard_trim( type, protect, *size_ptr, ret, size_ptr )) return STATUS_SUCCESS;' in kp
 assert kp.index('ios_wasm_guard_trim(') < kp.index('if (probed++ < 2)')
-# The hinted failure path: after the last unhinted retry, before sc_decided, whose success hands the size back.
+# The hinted failure path: after the last unhinted retry and right after sc_decided (upstream's check-sc-align1g wants the
+# walk before the label to end with the unhinted fall-back), before the success that hands the size back.
 hd = src[src.index('                if (st2)\n                {\n                    pick = NULL;'):]
 hd = hd[:hd.index('st = STATUS_SUCCESS;')]
-assert hd.index('st2 = allocate_virtual_memory( &pick, &sz, type, protect, 0, 0, 0, 0 );') < \
-    hd.index('st2 = ios_wasm_guard_trim( type, protect, *size_ptr, &pick, &sz );') < hd.index('sc_decided:')
+assert hd.index('st2 = allocate_virtual_memory( &pick, &sz, type, protect, 0, 0, 0, 0 );') < hd.index('sc_decided:') < \
+    hd.index('st2 = ios_wasm_guard_trim( type, protect, *size_ptr, &pick, &sz );') < hd.index('*ret = pick;')
 assert '*ret = pick;\n                    *size_ptr = sz;' in hd
 assert src.count('ios_wasm_guard_trim(') == 3, 'one definition and two call sites'
 assert 'for (a = ios_furniture_ceiling; a + sizes[i] <= 0x7c00000000ull; a = ((a >> 28) + 1) << 28)' in helper

@@ -38081,10 +38081,11 @@ static inline __attribute__((always_inline)) NTSTATUS ios_nt_impl_NtAllocateVirt
                     sz = *size_ptr;
                     st2 = allocate_virtual_memory( &pick, &sz, type, protect, 0, 0, 0, 0 );
                 }
-                /* madeira-bcd personal: a V8 WebAssembly memory's 10 GB (MADEIRA_WASM_GUARD_TRIM) */
+            sc_decided:
+                /* madeira-bcd personal: a V8 WebAssembly memory's 10 GB (MADEIRA_WASM_GUARD_TRIM), after every placement above
+                 * failed. After the label: upstream's check-sc-align1g wants the unhinted fall-back to end the walk before it. */
                 if (st2)
                     st2 = ios_wasm_guard_trim( type, protect, *size_ptr, &pick, &sz );
-            sc_decided:
                 dprintf(2, "[jumbo] hinted reserve %p size=0x%lx failed (0x%x) — offset-preserving retry -> %p (0x%x)\n",
                         hint, (unsigned long)*size_ptr, (unsigned)st, pick, (unsigned)st2);
                 if (st2)

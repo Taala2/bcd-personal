@@ -62,8 +62,14 @@ check("the connect loop tries at most three distinct endpoints and keeps the pon
       and "let once = SteamSession.LogonResumeGuard()" in function(conn, "private func connect(to server: CMServerList.CMServer)"))
 check("no TLS trust override: URLSession's certificate and host name checks are untouched",
       "didReceive challenge" not in conn and "serverTrust" not in conn and "ServerTrustPolicy" not in conn)
-check("the credit lines for the adapted code are in the three files and in docs/STEAM_LIBRARY.md",
-      all("kuscholar/iDeck" in t for t in (conn, error_swift, servers_swift)) and "kuscholar/iDeck" in (root / "docs/STEAM_LIBRARY.md").read_text())
+# madeira-bcd personal (2026-11-17): the public export has no docs/ (every thebcd69/bcd-games tag carries docs/local-build only),
+# as check-onboarding.py says; the three source files are always checked, docs/STEAM_LIBRARY.md where it exists.
+steam_doc = root / "docs/STEAM_LIBRARY.md"
+if not steam_doc.is_file():
+    print("note: docs/STEAM_LIBRARY.md is not in this tree (the public export has no docs/); its credit line is not checked")
+check("the credit lines for the adapted code are in the three files and in docs/STEAM_LIBRARY.md (where it exists)",
+      all("kuscholar/iDeck" in t for t in (conn, error_swift, servers_swift))
+      and (not steam_doc.is_file() or "kuscholar/iDeck" in steam_doc.read_text()))
 check("a log line never carries the error's text or URL: only the sanitized domain and code",
       "SteamLog.event(\"[steam-cm-transport] attempt=\\(attempt) reason=\\(failure)\")" in conn
       and "localizedDescription" not in function(conn, "actor SteamConnection {").split("// MARK: - Receive")[0])

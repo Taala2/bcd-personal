@@ -179,9 +179,15 @@ require(not leaks, 'the preview build compiles no itch.io type' + (f' (found in 
 named = [p.relative_to(app) for d in ('SwiftSteam', 'BCDGOG', 'BCDEpic', 'BCDContent') for p in sorted((app / d).glob('**/*.swift'))
          if re.search(r'\bItch\w+|\bBCDItch\w+', code_of(p.read_text()))]
 require(not named, 'Steam\'s, GOG\'s, Epic\'s and the content engine\'s files name nothing of itch.io' + (f' (found in {named})' if named else ''))
-require('env.BCD_ITCH' in (root / 'docs/ITCH.md').read_text() or 'BCD_ITCH' in (root / 'docs/ITCH.md').read_text(), 'docs/ITCH.md names the switch')
-docs = (root / 'docs/ITCH.md').read_text()
-require('tests/host/check-itch.py' in docs and 'tests/host/check-itch-7z.py' in docs, 'docs name both checks')
+# madeira-bcd personal (2026-11-17): the public export has no docs/ (every thebcd69/bcd-games tag carries docs/local-build only),
+# as check-onboarding.py says; where docs/ITCH.md exists its two lines are checked as before.
+itch_doc = root / 'docs/ITCH.md'
+if itch_doc.is_file():
+    docs = itch_doc.read_text()
+    require('env.BCD_ITCH' in docs or 'BCD_ITCH' in docs, 'docs/ITCH.md names the switch')
+    require('tests/host/check-itch.py' in docs and 'tests/host/check-itch-7z.py' in docs, 'docs name both checks')
+else:
+    print('note: docs/ITCH.md is not in this tree (the public export has no docs/); its two lines are not checked')
 notices = (root / 'THIRD-PARTY-NOTICES.md').read_text()
 require('SwiftItch' in notices, 'THIRD-PARTY-NOTICES.md names SwiftItch')
 

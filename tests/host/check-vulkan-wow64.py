@@ -145,9 +145,15 @@ check("the settings catalog's vulkan entry no longer says x64 only, and says wha
       '"vulkan": {"category": "Graphics", "title": "Vulkan for this game", "kind": "choice", "default": "",' in gen
       and "32-bit programs get no Vulkan" not in gen and "placed inside its own" in gen
       and 'ConfigOption(key: "vulkan", title: "Vulkan for this game", kind: .choice, defaultValue: "",' in catalog)
-doc = (root / "docs/VULKAN.md").read_text()
-check("docs/VULKAN.md has the 32-bit section", "## 32-bit programlar" in doc and "VK_EXT_external_memory_host" in doc
-      and "patch-wine-vulkan-wow64.py" in doc and "32-bit programa Vulkan yok" not in doc)
+# madeira-bcd personal (2026-11-17): the public export has no docs/ (every thebcd69/bcd-games tag carries docs/local-build only),
+# as check-onboarding.py says; where docs/VULKAN.md exists its line is checked as before.
+vulkan_doc = root / "docs/VULKAN.md"
+if vulkan_doc.is_file():
+    doc = vulkan_doc.read_text()
+    check("docs/VULKAN.md has the 32-bit section", "## 32-bit programlar" in doc and "VK_EXT_external_memory_host" in doc
+          and "patch-wine-vulkan-wow64.py" in doc and "32-bit programa Vulkan yok" not in doc)
+else:
+    print("note: docs/VULKAN.md is not in this tree (the public export has no docs/); its line is not checked")
 readme = (root / "app/Madeira/vulkan/README.md").read_text()
 check("the bundle folder's README names both sets", "i386-windows" in readme and "arm64ec-windows" in readme)
 

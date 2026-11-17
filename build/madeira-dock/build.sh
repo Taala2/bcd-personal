@@ -45,7 +45,10 @@ section() { printf '\n\n==== %s ====\n\n' "$1"; }
     cat "$SRC/LICENSE"
     # madeira-bcd: since the Friends change (willfaust/madeira-dock pull request #10, taken before it merged) the pinned commit is one of
     # BCD's fork, which willfaust/madeira-dock does not have; the source this executable is built from is that commit plus tools/patch-dock-*.py.
-    printf '\nCorresponding source: https://github.com/thebcd69/bcd-dock (commit %s), a fork of https://github.com/willfaust/madeira-dock,\n' \
+    # madeira-bcd personal (2026-11-17): the repository is the submodule's own remote (.gitmodules), so a fork that pins its own
+    # copy (Taala2/bcd-dock: 0.1.665's pin was never pushed to thebcd69/bcd-dock) names the place its commit really is.
+    printf '\nCorresponding source: %s (commit %s), a fork of https://github.com/willfaust/madeira-dock,\n' \
+        "$( (git -C "$SRC" remote get-url origin 2>/dev/null || echo https://github.com/thebcd69/bcd-dock) | sed 's/\.git$//')" \
         "$(git -C "$SRC" rev-parse HEAD 2>/dev/null || echo unknown)"
     printf 'built with the changes that tools/patch-dock-*.py of https://github.com/thebcd69/bcd-games make to it.\n'
     section 'LICENSE-EXCEPTION.md (Madeira Converter Exception)'

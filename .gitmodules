@@ -12,5 +12,5 @@
 	branch = ios-port
 [submodule "madeira-dock"]
 	path = madeira-dock
-	url = https://github.com/thebcd69/bcd-dock.git
+	url = https://github.com/Taala2/bcd-dock.git
 	branch = main

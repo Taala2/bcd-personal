@@ -118,8 +118,12 @@ HARNESS = r'''
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
 /* stand-ins: arm64 thread state, the engine's JIT bookkeeping, a TEB whose WowTebOffset is at 0x180c */
+/* madeira-bcd personal (2026-11-17): on an arm64 Mac <mach/mach.h> already declares arm_thread_state64_t (the same fields) and its
+ * get_pc macro (the macos-15 runner, Xcode 26.3: "typedef redefinition with different types"); the stand-in is for a host without them. */
+#ifndef _STRUCT_ARM_THREAD_STATE64
 typedef struct { uint64_t __x[29]; uint64_t __fp, __lr, __sp, __pc; uint32_t __cpsr; } arm_thread_state64_t;
 #define __darwin_arm_thread_state64_get_pc(s) ((s).__pc)
+#endif
 #define STDERR_FILENO 2
 void *ios_jit_rx_base_global; size_t ios_jit_pool_size_global;
 static int ios_jit_low_contains( uintptr_t a ) { (void)a; return 0; }

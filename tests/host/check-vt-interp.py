@@ -49,6 +49,7 @@ def check(what, cond):
 
 
 SCRIPT = "tools/patch-winemetal-vt-interp.py"
+PHASE_TRIES = 3   # runs of one harness phase at most (it paces by the real clock; see the phase loop)
 APP = R / "app/Madeira"
 wf = (R / ".github/workflows/build-ipa.yml").read_text()
 chain = kit.chain()
@@ -251,11 +252,20 @@ int main(void) {
             for phase, what in ((0, "the key is not set"), (1, "the key without present-fx"), (2, "one picture: the whole life of a session"),
                                 (3, "three pictures, 4:2:0 buffers, an sRGB layer, MetalFX upscaling"), (4, "what VideoToolbox or the picture do not allow"),
                                 (5, "the device probe")):
-                r = subprocess.run([str(t / "h"), str(phase)], capture_output=True, text=True, timeout=300)
-                print("\n".join(l for l in r.stdout.splitlines() if l.startswith(("ok  ", "FAIL", "     "))))
-                if r.returncode:
-                    print(r.stderr[-1500:])
-                check(f"harness phase {phase} ({what})", r.returncode == 0 and "ok  " in r.stdout and "FAIL" not in r.stdout)
+                # madeira-bcd personal (2026-11-18, the owner's call): the harness paces frames by the real clock (12 ms frames against a
+                # 60 Hz screen, 300 ms without a frame), and on the shared macos-15 runner its phases 2-4 failed in two attempts of one
+                # commit, on different lines each time. A phase may run up to PHASE_TRIES times; it passes only when one whole run passes,
+                # with every line unchanged, and each failed try is printed in full with a warning.
+                for attempt in range(1, PHASE_TRIES + 1):
+                    r = subprocess.run([str(t / "h"), str(phase)], capture_output=True, text=True, timeout=300)
+                    passed = r.returncode == 0 and "ok  " in r.stdout and "FAIL" not in r.stdout
+                    print("\n".join(l for l in r.stdout.splitlines() if l.startswith(("ok  ", "FAIL", "     "))))
+                    if r.returncode:
+                        print(r.stderr[-1500:])
+                    if passed or attempt == PHASE_TRIES:
+                        break
+                    print(f"::warning::check-vt-interp: harness phase {phase} failed on try {attempt} of {PHASE_TRIES} (timing on this runner?); running it again")
+                check(f"harness phase {phase} ({what})" + (f" on try {attempt} of {PHASE_TRIES}" if attempt > 1 else ""), passed)
         else:
             print("\n".join(l for l in b.stderr.splitlines() if "error" in l or "Undefined" in l)[:4000])
 

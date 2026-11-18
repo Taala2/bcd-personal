@@ -3638,6 +3638,12 @@ jobs:
       # test (tests/host/check-vt-interp.py). After the pacing patch (it builds on present-fx). Native only.
       # madeira-bcd personal (2026-11-18): first a measurement of how late this runner's usleep wakes (the harness paces by it);
       # it prints numbers only and checks nothing (tools/ci-sleep-probe.py).
+      # madeira-bcd personal (2026-11-18, the owner's call): a hypothesis under test. usleep(12 ms) woke 48 ms late on an idle
+      # runner and as late under taskpolicy -l 0 -t 0; kern.timer.coalescing_enabled was 1. It is turned off for the whole
+      # throwaway machine here, and the probe below prints kern.timer again and measures as before.
+      - name: Turn off the runner's timer coalescing
+        if: github.repository == 'Taala2/bcd-personal'
+        run: sudo sysctl -w kern.timer.coalescing_enabled=0 || echo "::warning::kern.timer.coalescing_enabled not set"
       - name: Measure the runner's sleep overshoot
         run: python3 tools/ci-sleep-probe.py
       - name: Check the VideoToolbox frame interpolation experiment

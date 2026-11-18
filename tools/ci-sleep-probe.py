@@ -2,11 +2,14 @@
 # madeira-bcd personal (2026-11-18, the owner's call): a measurement only. tests/host/vt_interp_harness.m paces its frames with
 # usleep and CLOCK_MONOTONIC (sleep_until, frames()), and its cadence lines (80 FPS on a 60 Hz screen, 50 FPS) failed on all three
 # tries on the macos-15 runner. This prints how much later than asked the runner's usleep wakes, alone and on the harness's
-# own schedule, so that the cause can be told from the numbers. It checks nothing and always exits 0.
+# own schedule, and which processes take the processor before and after, so that the cause can be told from the numbers. It
+# checks nothing and always exits 0.
 import ctypes
 import ctypes.util
 import os
 import statistics
+import subprocess
+import sys
 import time
 
 libc = ctypes.CDLL(ctypes.util.find_library("c"))
@@ -52,7 +55,22 @@ def schedule(ms: int) -> list:
     return [(b - a) * 1000 for a, b in zip(stamps, stamps[1:])]
 
 
+TOP_PROCESSES = 15
+
+
+def busiest(when: str) -> None:
+    # what takes the processor while the harness would run: ps sorted by CPU (-r on macOS; Linux's procps sorts with --sort)
+    args = ["ps", "-Ao", "pcpu,pid,ppid,etime,comm", "-r" if sys.platform == "darwin" else "--sort=-pcpu"]
+    try:
+        r = subprocess.run(args, capture_output=True, text=True, timeout=30)
+        print(f"busiest processes {when}:")
+        print("\n".join(r.stdout.splitlines()[:TOP_PROCESSES + 1]) or r.stderr.strip())
+    except (OSError, subprocess.TimeoutExpired) as e:
+        print(f"ps not run {when}: {e}")
+
+
 def main() -> None:
+    busiest("before the measurement")
     single_sleeps()
     for ms, limit_ms, what in SCHEDULES:
         for run in range(1, 4):
@@ -64,6 +82,7 @@ def main() -> None:
         print(f"cpus {os.cpu_count()}, load {os.getloadavg()}")
     except OSError as e:
         print(f"load average not readable: {e}")
+    busiest("after the measurement")
 
 
 if __name__ == "__main__":

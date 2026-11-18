@@ -2303,6 +2303,11 @@ static void *wine_process_thread(void *arg) {
                     LOG("game config env: %{public}s=%{public}s", k.UTF8String, v.UTF8String);
                     fprintf(stderr, "[madeira-env] game %s=%s\n", k.UTF8String, v.UTF8String);
                 }
+                /* madeira-bcd (upstream Madeira #567 by nekodesusan-prog, BCDJapanese.c): env.MADEIRA_JAPANESE = 1, after the game's own
+                 * lines: Wine's system and user locale ja-JP (LC_ALL = ja_JP.UTF-8 unless the file already set a Japanese one, so ANSI and
+                 * OEM code page 932) and the extra code page tables (MADEIRA_NLS_EXTRA), only when the bundle has the font. The session
+                 * end puts LC_ALL and LANG back. */
+                bcd_japanese_session_env(bcd_japanese_on(), [[NSBundle mainBundle] resourcePath].fileSystemRepresentation, STDERR_FILENO);
                 {   /* madeira-bcd personal (2026-11-02): three switches on for every game whose bcd.cfg and own file name none of them
                      * (env.NAME = 0 there turns one off). Each acts only where the game would otherwise fail: TLS_CLEAR_OWN_PROCESS keeps
                      * TlsFree inside the calling program, as on Windows (the session's programs share one thread list); ANON_LDADDAL64
@@ -2320,11 +2325,6 @@ static void *wine_process_thread(void *arg) {
                                 name, name);
                     }
                 }
-                /* madeira-bcd (upstream Madeira #567 by nekodesusan-prog, BCDJapanese.c): env.MADEIRA_JAPANESE = 1, after the game's own
-                 * lines: Wine's system and user locale ja-JP (LC_ALL = ja_JP.UTF-8 unless the file already set a Japanese one, so ANSI and
-                 * OEM code page 932) and the extra code page tables (MADEIRA_NLS_EXTRA), only when the bundle has the font. The session
-                 * end puts LC_ALL and LANG back. */
-                bcd_japanese_session_env(bcd_japanese_on(), [[NSBundle mainBundle] resourcePath].fileSystemRepresentation, STDERR_FILENO);
                 {   /* madeira-bcd (round 624, agent R: the Epic GTA V / RDR2 starts 7Z8VKR, TV6H06): env.MADEIRA_STEAM_IDENTITY = none from the
                      * game's OWN file. The check near the start of this function runs before these lines are exported, so a key from the game's
                      * file was never seen there (0 of 2,182 logs printed the line below). Same effect as that check; it still works for a key

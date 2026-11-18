@@ -3628,6 +3628,10 @@ jobs:
       # VideoToolbox make the pictures between two frames and presents them. madeira_vti_probe (Settings > Graphics > Experimental)
       # finds out on a device which sizes it takes and how long a pair takes. Without the variable both hooks return at their first
       # test (tests/host/check-vt-interp.py). After the pacing patch (it builds on present-fx). Native only.
+      # madeira-bcd personal (2026-11-18): first a measurement of how late this runner's usleep wakes (the harness paces by it);
+      # it prints numbers only and checks nothing (tools/ci-sleep-probe.py).
+      - name: Measure the runner's sleep overshoot
+        run: python3 tools/ci-sleep-probe.py
       - name: Check the VideoToolbox frame interpolation experiment
         run: python3 tests/host/check-vt-interp.py
 

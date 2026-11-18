@@ -2,8 +2,9 @@
 # madeira-bcd personal (2026-11-18, the owner's call): a measurement only. tests/host/vt_interp_harness.m paces its frames with
 # usleep and CLOCK_MONOTONIC (sleep_until, frames()), and its cadence lines (80 FPS on a 60 Hz screen, 50 FPS) failed on all three
 # tries on the macos-15 runner. This prints how much later than asked the runner's usleep wakes, alone and on the harness's
-# own schedule, and which processes take the processor before and after, so that the cause can be told from the numbers. It
-# checks nothing and always exits 0.
+# own schedule, and which processes take the processor before and after, so that the cause can be told from the numbers. On
+# macOS it also prints the kernel's timer coalescing settings and measures once more under taskpolicy -l 0 -t 0 (the highest
+# latency and throughput tiers of this process alone; no system setting is changed). It checks nothing and always exits 0.
 import ctypes
 import ctypes.util
 import os
@@ -69,8 +70,20 @@ def busiest(when: str) -> None:
         print(f"ps not run {when}: {e}")
 
 
-def main() -> None:
-    busiest("before the measurement")
+UNDER_TASKPOLICY = "MADEIRA_SLEEP_PROBE_TASKPOLICY"   # set for the second run, which measures only
+# taskpolicy(8): -l is the latency tier (timer coalescing), -t the throughput tier; 0 is the highest of both
+TASKPOLICY = ["taskpolicy", "-l", "0", "-t", "0"]
+
+
+def run_cmd(args: list) -> str:
+    try:
+        r = subprocess.run(args, capture_output=True, text=True, timeout=120)
+        return (r.stdout + r.stderr).strip()
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return f"{args[0]} not run: {e}"
+
+
+def measure() -> None:
     single_sleeps()
     for ms, limit_ms, what in SCHEDULES:
         for run in range(1, 4):
@@ -78,10 +91,27 @@ def main() -> None:
             slow = sum(1 for v in iv if v > limit_ms)
             print(f"schedule {ms} ms, run {run}: intervals {summary(iv)}; {slow} of {len(iv)} longer than {what} "
                   f"({limit_ms:.1f} ms)")
+
+
+def main() -> None:
+    if os.environ.get(UNDER_TASKPOLICY):
+        measure()
+        return
+    if sys.platform == "darwin":
+        # the kernel's timer coalescing settings: how much slack a timer of each tier may be given
+        print("sysctl kern.timer:")
+        print(run_cmd(["sysctl", "kern.timer"]))
+    busiest("before the measurement")
+    print("== the default policy (as the check runs now)")
+    measure()
     try:
         print(f"cpus {os.cpu_count()}, load {os.getloadavg()}")
     except OSError as e:
         print(f"load average not readable: {e}")
+    if sys.platform == "darwin":
+        print(f"== again under {' '.join(TASKPOLICY)}")
+        sys.stdout.flush()
+        print(run_cmd(["env", f"{UNDER_TASKPOLICY}=1"] + TASKPOLICY + [sys.executable, os.path.abspath(__file__)]))
     busiest("after the measurement")
 
 

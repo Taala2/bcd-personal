@@ -42,9 +42,9 @@ jobs:
         run: test -n "${IPA_PASSWORD:-}" || { echo "::error::the repository is public and the IPA_PASSWORD secret is not set"; exit 1; }
 
       # madeira-bcd personal (2026-11-18, the owner's call): Spotlight on the runner indexes every file the build makes (mds,
-      # mds_stores and a dozen mdworker_shared at a load of 17 on 3 cores, tools/ci-sleep-probe.py), and usleep(12 ms) then woke
-      # 40 ms late, which the real-clock harness of check-vt-interp cannot pace by. Indexing is turned off on this throwaway
-      # machine before the checkout; no check, step or hash changes.
+      # mds_stores and a dozen mdworker_shared at a load of 17 on 3 cores, tools/ci-sleep-probe.py). Indexing is turned off on
+      # this throwaway machine before the checkout (the load then fell to 2); no check, step or hash changes. It did not make
+      # usleep wake on time (12 ms still woke 72 ms late), so it is not what check-vt-interp's timing failures come from.
       - name: Turn off Spotlight indexing on the runner
         if: github.repository == 'Taala2/bcd-personal'
         run: sudo mdutil -a -i off || echo "::warning::Spotlight indexing not turned off"

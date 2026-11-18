@@ -42,7 +42,7 @@ jobs:
         run: test -n "${IPA_PASSWORD:-}" || { echo "::error::the repository is public and the IPA_PASSWORD secret is not set"; exit 1; }
 
       # madeira-bcd personal (2026-11-18, the owner's call): Spotlight on the runner indexes every file the build makes (mds,
-      # mds_stores and a dozen mdworker_shared at a load of 17 on 3 cores, tools/ci-sleep-probe.py). Indexing is turned off on
+      # mds_stores and a dozen mdworker_shared at a load of 17 on 3 cores, run 44265741400). Indexing is turned off on
       # this throwaway machine before the checkout (the load then fell to 2); no check, step or hash changes. It did not make
       # usleep wake on time (12 ms still woke 72 ms late), so it is not what check-vt-interp's timing failures come from.
       - name: Turn off Spotlight indexing on the runner
@@ -3636,16 +3636,13 @@ jobs:
       # VideoToolbox make the pictures between two frames and presents them. madeira_vti_probe (Settings > Graphics > Experimental)
       # finds out on a device which sizes it takes and how long a pair takes. Without the variable both hooks return at their first
       # test (tests/host/check-vt-interp.py). After the pacing patch (it builds on present-fx). Native only.
-      # madeira-bcd personal (2026-11-18): first a measurement of how late this runner's usleep wakes (the harness paces by it);
-      # it prints numbers only and checks nothing (tools/ci-sleep-probe.py).
-      # madeira-bcd personal (2026-11-18, the owner's call): a hypothesis under test. usleep(12 ms) woke 48 ms late on an idle
-      # runner and as late under taskpolicy -l 0 -t 0; kern.timer.coalescing_enabled was 1. It is turned off for the whole
-      # throwaway machine here, and the probe below prints kern.timer again and measures as before.
+      # madeira-bcd personal (2026-11-18, the owner's call): the harness paces its frames with usleep, and on this runner
+      # usleep(12 ms) woke 40-72 ms late (at a load of 18, with Spotlight off at a load of 2, and under taskpolicy -l 0 -t 0) while
+      # kern.timer.coalescing_enabled was 1. With coalescing off for the whole throwaway machine it woke about 3 ms late and every
+      # phase passed on the first try (run 44291172974; measured with a probe script removed since). No check changes here.
       - name: Turn off the runner's timer coalescing
         if: github.repository == 'Taala2/bcd-personal'
         run: sudo sysctl -w kern.timer.coalescing_enabled=0 || echo "::warning::kern.timer.coalescing_enabled not set"
-      - name: Measure the runner's sleep overshoot
-        run: python3 tools/ci-sleep-probe.py
       - name: Check the VideoToolbox frame interpolation experiment
         run: python3 tests/host/check-vt-interp.py
 

@@ -876,6 +876,10 @@ jobs:
       - name: Check x18 arith
         run: python3 tests/host/check-x18-arith.py
 
+      # madeira-bcd personal (2026-11-19): a store of x18 (opengl32's .teb = NtCurrentTeb()) retries when a preemption zeroed x18.
+      - name: Check x18 store retry
+        run: python3 tests/host/check-x18-store-retry.py
+
       # ===== Group 2: 20 checks whose test was brought up to date with the code in round 624 =====
 
       # tools/patch-wine-cpu-error-diag.py applies once to the committed user32/wow64 files ([msgbox-origin], [pf-xmmi64] log only).

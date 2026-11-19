@@ -8197,6 +8197,17 @@ static int ios_insn_x18_role_ex(uint32_t insn, int stores)
     return X18_ROLE_NONE;
 }
 
+/* madeira-bcd personal (2026-11-19, build 664, Metamorph on zink): `cbz x18, <back_bytes earlier>`, the retry word after an X18_ROLE_RT
+ * store in the "via x18" trampoline. A preemption between the trampoline's `ldr x18, [TEB slot]` and the store zeroes x18, and the store
+ * then writes 0 without faulting: the GL call reached the unix side with params->teb == NULL and faulted there at 0x1238 (ext_glUnmapBuffer,
+ * ext_glFenceSync, gl_glBindTexture, ...), where nothing repairs it. x18 only goes from the TEB to 0 (the kernel) and back only through the
+ * trampoline's load, so a non-zero x18 after the store means the store wrote the TEB; a zero one reruns the load and the store (no writeback
+ * in the three store forms, so writing the same slot again is harmless). */
+static uint32_t ios_x18_store_retry(int back_bytes)
+{
+    return 0xB4000000u | ((((uint32_t)(-back_bytes / 4)) & 0x7FFFFu) << 5) | 18u;
+}
+
 /* madeira-bcd: the destination of an ADD/SUB (immediate or register) that reads
  * x18 once, when that destination can carry the TEB instead of x18: not x18,
  * not 31 (SP or XZR), and not the instruction's other source. -1 otherwise.
@@ -8618,8 +8629,15 @@ int ios_jit_patch_x18(char *text_rw, char *text_rx, size_t text_size,
              * thread is preempted in that window, x18 comes back zero and the
              * original instruction faults on the zero page, which the handler
              * already recovers. A rare recoverable fault beats the certain
-             * SP-align kill this replaces. */
-            if (tramp_off + 20 > tramp_size)
+             * SP-align kill this replaces.
+             *
+             * madeira-bcd personal (2026-11-19): that holds when x18 is the
+             * ADDRESS. An X18_ROLE_RT store (x18 is the VALUE: opengl32's
+             * `.teb = NtCurrentTeb()`) does not fault: it writes 0. So that
+             * form gets one more word, `cbz x18, <the mrs>` (ios_x18_store_retry):
+             *   mrs, and, ldr x18, <store>, cbz x18 -> mrs, b back */
+            int store_retry = (role == X18_ROLE_RT);
+            if (tramp_off + (store_retry ? 24 : 20) > tramp_size)
             {
                 ERR("x18 patcher: out of trampoline space at %d patches\n", count);
                 break;
@@ -8632,6 +8650,11 @@ int ios_jit_patch_x18(char *text_rw, char *text_rx, size_t text_size,
             tramp_off += 4;
             *(uint32_t *)(tramp_rw + tramp_off) = insn;
             tramp_off += 4;
+            if (store_retry)
+            {
+                *(uint32_t *)(tramp_rw + tramp_off) = ios_x18_store_retry(16);
+                tramp_off += 4;
+            }
             x18_scratch++;
         }
 

@@ -124,8 +124,8 @@ check('NW.js and CEF come before Electron (their folders may hold chrome_100_per
 lists = (APP / 'GameRecommendations.swift').read_text(encoding='utf-8')
 listing = (APP / 'GameRecommendationsList.swift').read_text(encoding='utf-8')
 check('match asks the personal list first, then the list in use, then the personal engine rules',
-      'personal.match(windowsPath: windowsPath, steamAppID: steamAppID, fileExists: fileExists)\n'
-      '            ?? active.match(windowsPath: windowsPath, steamAppID: steamAppID, fileExists: fileExists)\n'
+      'personal.match(windowsPath: windowsPath, steamAppID: steamAppID, fileExists: fileExists, programsIn: programsIn)\n'
+      '            ?? active.match(windowsPath: windowsPath, steamAppID: steamAppID, fileExists: fileExists, programsIn: programsIn)\n'
       '            ?? personalEngineMatch(windowsPath: windowsPath, fileExists: fileExists)' in lists
       and 'for program in match.programs where program.name == "*.exe" {' in lists
       and r'guard let beside = program.beside, fileExists(folder + "\\" + beside) else { continue }' in lists)

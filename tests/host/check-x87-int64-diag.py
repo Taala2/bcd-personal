@@ -100,7 +100,6 @@ PRELUDE = r'''
 #include <unistd.h>
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
-#include <mach/mach_error.h>
 
 #define arm_thread_state64_t fake_arm_thread_state64_t
 typedef struct { uint64_t __x[29]; uint64_t __fp, __lr, __sp, __pc; } fake_arm_thread_state64_t;
@@ -143,66 +142,37 @@ def words_c(rows):
 
 
 MAIN = r'''
-/* The guest window: a 4 GB aligned range that is free in this process, found at its first use. A fixed address is not safe: on
- * macOS 15 arm64 a process already has [0x1000000000, 0x7000000000) reserved (prot 0/0), and 0x5000000000 was inside it. The range
- * is found with mach_vm_map and released again, so the fixed allocations of the scenarios land in free memory; MADEIRA_TEST_WIN
- * (hex) names a base instead, so that every run of one check uses the same window. A base that cannot be found or is not 4 GB
- * aligned ends the run like a failed allocation. */
-static uint64_t test_win_base(void)
-{
-    static uint64_t base;
-    const char *e;
-
-    if (base) return base;
-    e = getenv("MADEIRA_TEST_WIN");
-    if (e && *e) base = strtoull(e, NULL, 16);
-    else
-    {
-        mach_vm_address_t m = 0;
-        kern_return_t kr = mach_vm_map(mach_task_self(), &m, 0x100000000ULL, 0xffffffffULL, VM_FLAGS_ANYWHERE, MACH_PORT_NULL, 0, FALSE,
-                                       VM_PROT_NONE, VM_PROT_NONE, VM_INHERIT_DEFAULT);
-        if (kr != KERN_SUCCESS)
-        {
-            fprintf(stderr, "[win] mach_vm_map(4 GB, 4 GB aligned, anywhere) = %d (%s)\n", kr, mach_error_string(kr));
-            puts("win-failed");
-            exit(3);
-        }
-        mach_vm_deallocate(mach_task_self(), m, 0x100000000ULL);
-        base = m;
-    }
-    if (!base || (base & 0xffffffffULL) || base < 0x100000000ULL)
-    {
-        fprintf(stderr, "[win] 0x%llx is no 4 GB aligned window base\n", (unsigned long long)base);
-        puts("win-failed");
-        exit(3);
-    }
-    return base;
-}
-#define WIN test_win_base()
-/* A FIXED allocation that fails says why, on stderr (the checks print it as their detail): the address and size asked for, the
- * kernel's answer, the page size and the first mapping at or above the address. stdout ("alloc-failed") and exit(3) stay as they were. */
-static void alloc_failed_report(uint64_t a, size_t n, kern_return_t kr)
-{
-    mach_vm_address_t ra = a;
-    mach_vm_size_t rs = 0;
-    vm_region_basic_info_data_64_t ri;
-    mach_msg_type_number_t rc = VM_REGION_BASIC_INFO_COUNT_64;
-    mach_port_t ro = MACH_PORT_NULL;
-    kern_return_t rk = mach_vm_region(mach_task_self(), &ra, &rs, VM_REGION_BASIC_INFO_64, (vm_region_info_t)&ri, &rc, &ro);
-
-    fprintf(stderr, "[alloc_at] mach_vm_allocate(0x%llx, 0x%zx, VM_FLAGS_FIXED) = %d (%s); page size 0x%lx\n",
-            (unsigned long long)a, n, kr, mach_error_string(kr), (unsigned long)vm_page_size);
-    if (rk == KERN_SUCCESS)
-        fprintf(stderr, "[alloc_at]   first mapping at or above it: [0x%llx, 0x%llx) prot %d/%d%s\n", (unsigned long long)ra,
-                (unsigned long long)(ra + rs), ri.protection, ri.max_protection, ra < a + n ? " -- OVERLAPS the request" : "");
-    else
-        fprintf(stderr, "[alloc_at]   mach_vm_region = %d (%s)\n", rk, mach_error_string(rk));
-}
+/* arm64 macOS reserves 0x1000000000-0x7000000000 in every process (the M5 Max, build 672): the window moves to
+   0x15000000000 there; on the Intel host it stays at 0x5000000000. */
+#if defined(__aarch64__)
+#define WIN 0x15000000000ULL
+#else
+#define WIN 0x5000000000ULL
+#endif
+/* the host code pool and its neighbour: 0x300000000 on Intel; on arm64 macOS the system libraries reach past it */
+#if defined(__aarch64__)
+#define HOSTAREA 0x20000000000ULL
+#else
+#define HOSTAREA 0x300000000ULL
+#endif
 static uint64_t alloc_at(uint64_t a, size_t n)
 {
-    mach_vm_address_t m = a;
-    kern_return_t kr = mach_vm_allocate(mach_task_self(), &m, n, VM_FLAGS_FIXED);
-    if (kr != KERN_SUCCESS) { alloc_failed_report(a, n, kr); puts("alloc-failed"); exit(3); }
+    /* Host page by host page (M5 Max, build 672: 16 KB pages there, 4 KB on the Intel VM): the window's pieces sit at
+       4 KB offsets, so two may share a host page; a page an earlier piece already mapped is fine. */
+    const uint64_t pg = vm_page_size, lo = a & ~(pg - 1), hi = (a + n + pg - 1) & ~(pg - 1);
+    for (uint64_t p = lo; p < hi; p += pg)
+    {
+        mach_vm_address_t m = p;
+        kern_return_t k = mach_vm_allocate(mach_task_self(), &m, pg, VM_FLAGS_FIXED);
+        if (k == KERN_NO_SPACE)
+        {   /* taken as already there only when it is a read-write page (one an earlier piece of this program mapped) */
+            mach_vm_address_t q = p; mach_vm_size_t qs = 0; vm_region_basic_info_data_64_t ri;
+            mach_msg_type_number_t rc = VM_REGION_BASIC_INFO_COUNT_64; mach_port_t ro;
+            if (mach_vm_region(mach_task_self(), &q, &qs, VM_REGION_BASIC_INFO_64, (vm_region_info_t)&ri, &rc, &ro) == KERN_SUCCESS
+                && q <= p && (ri.protection & 3) == 3) continue;
+        }
+        if (k != KERN_SUCCESS) { puts("alloc-failed"); exit(3); }
+    }
     return a;
 }
 static void w32(uint64_t a, uint32_t v) { memcpy((void *)a, &v, 4); }
@@ -220,7 +190,7 @@ static struct world make(const uint32_t *code, size_t words, uint32_t eax, uint3
     static uint64_t pool;
     struct world w;
     memset(&w, 0, sizeof(w));
-    if (!pool) pool = alloc_at(0x300000000ULL + 0x1000000, 0x10000);
+    if (!pool) pool = alloc_at(HOSTAREA + 0x1000000, 0x10000);
     w.pool = pool;
     ios_jit_rx_base_global = (void *)pool; ios_jit_pool_size_global = 0x10000;
     memcpy((void *)(pool + 0x1000 - words * 4), code, words * 4);
@@ -272,7 +242,7 @@ int main(int argc, char **argv)
     }
     if (!strcmp(s, "pair")) {
         unsigned a = 0, b = 0;
-        uint64_t base = alloc_at(0x300000000ULL + 0x2000000, 0x4000);
+        uint64_t base = alloc_at(HOSTAREA + 0x2000000, 0x4000);
         memcpy((void *)(base + 0x100), batman, sizeof(batman));
         printf("batman=%d\n", ios_x87i_find_pair(base + 0x100 + sizeof(batman) - 0x20, &a, &b));
         printf("a=%x b=%x\n", a, b);

@@ -1,112 +1,194 @@
 #!/usr/bin/env python3
-"""A store OF x18 (opengl32's `.teb = NtCurrentTeb()`) retries when x18 was zeroed; no Wine runs.
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright 2026 thebcd69 (BCD)
+# BCD Material: additional terms under GPL-3.0 section 7 apply; see LICENSE-BCD.md.
+"""A store of x18 (opengl32's NtCurrentTeb() into a params struct) takes two tries (round 677, agent G3 S3).
 
-iOS zeroes x18 when it preempts a thread. The x18 patcher in build/ntdll-unix/virtual_ios.c runs
-`str x18, [sp, #n]` (X18_ROLE_RT, opengl32 only, gl-backend on) through the "via x18" trampoline:
-load x18 from TPIDRRO_EL0, then the store unchanged. A preemption between the load and the store
-writes 0 without faulting, so the GL call reaches the unix side with params->teb == NULL and faults
-at 0x1238 (build 664, Metamorph on zink, 2026-11-19: ext_glUnmapBuffer, ext_glFenceSync, ...).
+iOS zeroes x18 when it preempts a thread. The x18 patcher (build/ntdll-unix/virtual_ios.c, ios_jit_patch_x18) runs a store of
+x18 through "load the TEB into x18, then the store": a preemption between the two stores 0 without faulting, and the GL call
+reaches the unix side with teb == NULL ("[fault_rip] ... region=0x1", addr 0x1238/0x1248; Alien Tenant KFW5H1 16 times in 5
+minutes, YJBGY1; Harem Heaven D4SD4B, Buckshot Roulette 43BDZ0, Mewgenics ZQX5PG). From build 678 the store site is:
+    mrs x18 ; and x18,#~7 ; ldr x18,[x18,#slot] ; <store> ; cbnz x18, done ; mrs ; and ; ldr ; <store> ; done: b back
+x18 still non-zero after the first store means the stored value was the TEB; zero means iOS cleared it, so the store runs once
+more (no writeback form is taken: storing twice is storing once). A slot that really holds 0 stores 0 twice and returns.
 
-Compiles the production ios_insn_x18_role, ios_insn_x18_role_ex and ios_x18_store_retry and checks:
-  - the three store forms of x18 are X18_ROLE_RT only when stores are on;
-  - the retry word is `cbz x18, -16` (back to the trampoline's mrs);
-  - a model of the trampoline, with x18 zeroed before each of its words in turn, always stores the
-    TEB with the retry word, and stores 0 without it (the bug this guards);
-and textually that the patcher emits the retry word after the store for X18_ROLE_RT only, within a
-24-byte check. Needs python3 and a C compiler (AddressSanitizer/UBSan when available).
+Compiles the production patcher (ios_insn_x18_role*, the data map, ios_jit_x18_tramp_need, ios_jit_patch_x18) and checks:
+  1. the budget: 40 bytes for a store site, 32 for every other site, stores only for opengl32 (stores = 1);
+  2. the words of a store site, also read back by llvm-objdump when it is here (cbnz's target is the branch back);
+  3. on this arm64 Mac: the patched code runs. TPIDRRO_EL0 & ~7 is Darwin's TSD base, so a pthread key's slot stands in for the
+     TEB slot: the store writes the key's value; with the value 0 it writes 0 and returns (no loop);
+  4. an image without stores (stores = 0) leaves a `str x18` alone, as before.
 """
-from pathlib import Path
 import os
+import platform
+import re
+import shutil
 import subprocess
+import sys
 import tempfile
+from pathlib import Path
 
-root = Path(__file__).resolve().parents[2]
-native = (root / 'build/ntdll-unix/virtual_ios.c').read_text()
-
-
-def function(source: str, signature: str) -> str:
-    start = source.index(signature)
-    return source[start:source.index('\n}', start) + 2] + '\n'
+R = Path(__file__).resolve().parents[2]
+vi = (R / "build/ntdll-unix/virtual_ios.c").read_text()
+failures = 0
 
 
-defines = native[native.index('#define X18_ROLE_NONE 0'):native.index('static int ios_insn_x18_role(uint32_t insn)')]
-code = '#include <stdint.h>\n#include <stdio.h>\n#include <stdlib.h>\n' + defines
-code += function(native, 'static int ios_insn_x18_role(uint32_t insn)')
-code += function(native, 'static int ios_insn_x18_role_ex(uint32_t insn, int stores)')
-code += function(native, 'static uint32_t ios_x18_store_retry(int back_bytes)')
-code += r'''
-#define FAIL(...) do { fprintf(stderr, __VA_ARGS__); exit(1); } while (0)
-#define TEB 0x71fffe0000ull
+def check(cond, what, detail=""):
+    global failures
+    print(("ok   " if cond else "FAIL ") + what + (("\n     " + str(detail)[-1500:]) if detail and not cond else ""))
+    if not cond:
+        failures += 1
 
-/* The trampoline as the patcher writes it: mrs x18; and x18; ldr x18, [slot]; <store>; [cbz x18]; b back.
- * The model runs it with x18 zeroed once, just before word `zero_at` (or never, -1), and returns what the
- * store wrote. Words: 0 mrs, 1 and, 2 ldr, 3 store, 4 cbz (when retry), then the branch back. */
-static uint64_t run( int retry, int zero_at )
+
+def function(src, signature):
+    start = src.index(signature)
+    return src[start:src.index("\n}", start) + 2] + "\n"
+
+
+patcher = function(vi, "int ios_jit_patch_x18(char *text_rw, char *text_rx, size_t text_size,")
+check(patcher.index("else if (role == X18_ROLE_RT)") < patcher.index("/* Stores, LDP, and arithmetic: the operands must all survive")
+      and "0xB5000000 | (5 << 5) | 18" in patcher and "for (int pass = 0; pass < 2; pass++)" in patcher,
+      "the patcher has the two-try store form ahead of its generic one")
+
+cc = shutil.which(os.environ.get("CC", "cc"))
+if not cc:
+    print("SKIP: no C compiler")
+else:
+    defines = vi[vi.index("#define X18_ROLE_NONE 0"):vi.index("static int ios_insn_x18_role(uint32_t insn)")]
+    data_word = re.search(r"#define IOS_X18_DATA_WORD\(dm, off\).*\n", vi).group(0)
+    parts = [defines, data_word,
+             function(vi, "static int ios_insn_x18_role(uint32_t insn)"),
+             function(vi, "static int ios_insn_x18_role_ex(uint32_t insn, int stores)"),
+             function(vi, "static int ios_x18_arith_dest(uint32_t insn, int role)"),
+             function(vi, "static uint32_t ios_insn_replace_x18(uint32_t insn, int role, int scratch)"),
+             function(vi, "static unsigned char *ios_x18_build_data_map( const char *text, size_t text_size )"),
+             function(vi, "size_t ios_jit_x18_tramp_need( const char *text, size_t text_size, int stores )"),
+             patcher]
+    harness = r'''
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <sys/mman.h>
+#if defined(__APPLE__)
+#include <libkern/OSCacheControl.h>
+#endif
+#define ERR(...) fprintf(stderr, __VA_ARGS__)
+int ios_teb_tls_slot_offset;
+@PARTS@
+#define STR_X18_X0  0xF9000012u   /* str x18, [x0] */
+#define RET         0xD65F03C0u
+static int fails;
+#define EXPECT(c, ...) do { if (!(c)) { fprintf(stderr, __VA_ARGS__); fails++; } } while (0)
+
+int main(int argc, char **argv)
 {
-    uint64_t x18 = 0, stored = 0xdeadull;
-    int pc = 0, steps = 0, zeroed = 0, words = retry ? 5 : 4;
-    while (pc < words)
-    {
-        if (++steps > 64) FAIL("the model did not leave the trampoline\n");
-        if (!zeroed && pc == zero_at) { x18 = 0; zeroed = 1; }
-        switch (pc)
-        {
-        case 0: x18 = 0x1000ull; break;   /* mrs x18, TPIDRRO_EL0 (the TSD base) */
-        case 1: x18 &= ~7ull; break;
-        case 2: x18 = TEB; break;         /* ldr x18, [x18, #slot] */
-        case 3: stored = x18; break;      /* str x18, [sp, #n] */
-        case 4: {                         /* cbz x18, -16 */
-            uint32_t w = ios_x18_store_retry( 16 );
-            int32_t imm = (int32_t)(w << 8) >> 13;   /* imm19, sign-extended */
-            if (x18 == 0) { pc += imm; continue; }
-            break;
-        }
-        }
-        pc++;
-    }
-    return stored;
+    /* 1. budget */
+    uint32_t sites[] = { STR_X18_X0, 0xA90007F2u /* stp x18, x1, [sp] */, 0xF81F8012u /* stur x18, [x0, #-8] */,
+                         0xF9400252u /* ldr x18, [x18]: an old-form site */, 0xD503201Fu };
+    size_t n0 = ios_jit_x18_tramp_need((const char *)sites, sizeof sites, 0);
+    size_t n1 = ios_jit_x18_tramp_need((const char *)sites, sizeof sites, 1);
+    printf("need %zu %zu\n", n0, n1);
+
+    /* 2 + 3. patch a two-word function (str x18, [x0] ; ret) with its trampoline right behind it, then call it */
+    size_t pg = (size_t)getpagesize();
+    int flags = MAP_PRIVATE | MAP_ANON;
+#if defined(__APPLE__) && defined(MAP_JIT)
+    flags |= MAP_JIT;
+#endif
+    char *mem = mmap(NULL, pg, PROT_READ | PROT_WRITE | PROT_EXEC, flags, -1, 0);
+    if (mem == MAP_FAILED) { printf("nojit\n"); return fails ? 1 : 0; }
+#if defined(__APPLE__) && defined(MAP_JIT)
+    pthread_jit_write_protect_np(0);
+#endif
+    uint32_t *text = (uint32_t *)mem, *tramp = (uint32_t *)(mem + 64);
+    text[0] = STR_X18_X0; text[1] = RET;
+    pthread_key_t key;
+    pthread_key_create(&key, NULL);
+    ios_teb_tls_slot_offset = (int)(key * 8);
+    int patched = ios_jit_patch_x18((char *)text, (char *)text, 8, (char *)tramp, (char *)tramp, 128, 1);
+    printf("patched %d text0 %08x\n", patched, text[0]);
+    printf("words");
+    for (int i = 0; i < 12; i++) printf(" %08x", tramp[i]);
+    printf("\n");
+    FILE *f = fopen(argv[1], "wb"); fwrite(tramp, 4, 10, f); fclose(f);
+#if defined(__APPLE__) && defined(MAP_JIT)
+    pthread_jit_write_protect_np(1);
+    sys_icache_invalidate(mem, pg);
+#else
+    __builtin___clear_cache(mem, mem + pg);
+#endif
+#if defined(__aarch64__) && defined(__APPLE__)
+    void (*fn)(uint64_t *) = (void (*)(uint64_t *))(void *)mem;
+    static int teb_stand_in;
+    uint64_t out = 0x5555;
+    pthread_setspecific(key, &teb_stand_in);
+    for (int i = 0; i < 100000; i++) { out = 0x5555; fn(&out); if (out != (uint64_t)(uintptr_t)&teb_stand_in) break; }
+    printf("run %d\n", out == (uint64_t)(uintptr_t)&teb_stand_in);
+    pthread_setspecific(key, NULL);
+    out = 0x5555; fn(&out);
+    printf("zero %d\n", out == 0);
+#else
+    printf("run skip\nzero skip\n");
+#endif
+
+    /* 4. stores = 0: a str x18 is not a site at all */
+    char *mem2 = malloc(256);
+    uint32_t *t2 = (uint32_t *)mem2;
+    t2[0] = STR_X18_X0; t2[1] = RET;
+    int p0 = ios_jit_patch_x18((char *)t2, (char *)t2, 8, mem2 + 64, mem2 + 64, 128, 0);
+    printf("stores0 %d %08x\n", p0, t2[0]);
+    return fails ? 1 : 0;
 }
+'''.replace("@PARTS@", "".join(parts))
+    with tempfile.TemporaryDirectory(prefix="x18-store-") as d:
+        d = Path(d)
+        (d / "t.c").write_text(harness)
+        exe = d / "t"
+        r = subprocess.run([cc, "-std=gnu11", "-O1", "-w", str(d / "t.c"), "-o", str(exe)], capture_output=True, text=True)
+        check(r.returncode == 0, "the patcher compiles on the host", r.stderr[-2000:])
+        if r.returncode == 0:
+            r = subprocess.run([str(exe), str(d / "tramp.bin")], capture_output=True, text=True, timeout=60)
+            out = dict(l.split(" ", 1) for l in r.stdout.splitlines() if " " in l)
+            check(out.get("need") == "%d %d" % (32 * 1 + 0x1000, 32 * 1 + 40 * 3 + 0x1000),
+                  "budget: 40 bytes for each of the three store sites with stores = 1, 32 for the old site, the page of slack", out.get("need"))
+            m = re.match(r"(\d+) text0 ([0-9a-f]{8})", out.get("patched", ""))
+            check(m is not None and m.group(1) == "1" and int(m.group(2), 16) >> 26 == 0x5,
+                  "the store is replaced by one B to its trampoline", out.get("patched"))
+            words = [int(w, 16) for w in out.get("words", "").split()]
+            if len(words) >= 10:
+                key_slot = words[2]
+                one = [0xD53BD060 | 18, 0x927DF000 | (18 << 5) | 18, key_slot, 0xF9000012]
+                check(words[0:4] == one and words[5:9] == one and (words[2] & 0xFFC003FF) == 0xF9400252,
+                      "two tries: mrs / and / ldr slot / the store, twice", ["%08x" % w for w in words[:10]])
+                check(words[4] == (0xB5000000 | (5 << 5) | 18), "between them: cbnz x18, +5 words (to the branch back)", "%08x" % words[4])
+                back = words[9]
+                imm26 = back & 0x3FFFFFF
+                delta = (imm26 - (1 << 26) if imm26 & (1 << 25) else imm26) * 4
+                check(back >> 26 == 0x5 and 64 + 9 * 4 + delta == 4, "the last word branches back to the instruction after the store", "%08x" % back)
+            objdump = shutil.which("llvm-objdump") or (subprocess.run(["xcrun", "-f", "llvm-objdump"], capture_output=True, text=True).stdout.strip()
+                                                      if shutil.which("xcrun") else "")
+            if objdump and (d / "tramp.bin").exists():
+                dis = subprocess.run([objdump, "-D", "-b", "binary", "--triple=aarch64", str(d / "tramp.bin")], capture_output=True, text=True)
+                if dis.returncode != 0:
+                    dis = subprocess.run([objdump, "-D", "--triple=aarch64", "--arch=aarch64", "-b", "binary", str(d / "tramp.bin")],
+                                         capture_output=True, text=True)
+                txt = dis.stdout
+                if "cbnz" in txt:
+                    check(txt.count("mrs\tx18, TPIDRRO_EL0") == 2 and txt.count("str\tx18, [x0]") == 2 and re.search(r"cbnz\tx18, 0x24", txt) is not None,
+                          "llvm-objdump reads the same: two TEB loads, two stores, cbnz x18 to offset 0x24 (the branch back)", txt[-1500:])
+                else:
+                    print("skip: llvm-objdump could not read the raw words here")
+            if platform.machine() == "arm64" and sys.platform == "darwin":
+                check(out.get("run") == "1", "run on this Mac: 100,000 calls each stored the slot's value (the TEB stand-in)", out.get("run"))
+                check(out.get("zero") == "1", "a slot holding 0: the store writes 0 and the call returns (no loop)", out.get("zero"))
+            else:
+                print("skip: not an arm64 Mac, the trampoline is not run")
+            check(out.get("stores0", "").startswith("0 f9000012"), "stores = 0: str x18 is no site, the text is unchanged", out.get("stores0"))
+            if r.returncode != 0:
+                check(False, "the harness ran", r.stderr[-1500:])
 
-int main( void )
-{
-    const uint32_t str_sp = 0xF9000BF2;   /* str x18, [sp, #0x10]   (opengl32 glUnmapBuffer) */
-    const uint32_t stur = 0xF81F03F2;     /* stur x18, [sp, #-16] */
-    const uint32_t stp = 0xA90007F2;      /* stp x18, x1, [sp] */
-    if (ios_insn_x18_role_ex( str_sp, 1 ) != X18_ROLE_RT || ios_insn_x18_role_ex( stur, 1 ) != X18_ROLE_RT
-        || ios_insn_x18_role_ex( stp, 1 ) != X18_ROLE_RT)
-        FAIL("a store of x18 is not X18_ROLE_RT with stores on\n");
-    if (ios_insn_x18_role_ex( str_sp, 0 ) != X18_ROLE_NONE) FAIL("a store of x18 is patched with stores off\n");
-    if (ios_x18_store_retry( 16 ) != 0xB4FFFF92) FAIL("retry word 0x%08x, want 0xB4FFFF92 (cbz x18, -16)\n", ios_x18_store_retry( 16 ));
-    for (int at = -1; at <= 5; at++)
-        if (run( 1, at ) != TEB) FAIL("with the retry word, x18 zeroed before word %d stores 0x%llx\n", at, (unsigned long long)run( 1, at ));
-    if (run( 0, 3 ) != 0) FAIL("the model no longer shows the bug: without the retry, a zero before the store should store 0\n");
-    puts( "PASS: a store of x18 retries after a zeroed x18 and always writes the TEB; without the retry it writes 0" );
-    return 0;
-}
-'''
-
-patcher = function(native, 'int ios_jit_patch_x18(char *text_rw, char *text_rx, size_t text_size,')
-fallback = patcher[patcher.index('Use x18 itself.'):patcher.index('/* Branch back to return address */')]
-assert 'int store_retry = (role == X18_ROLE_RT);' in fallback
-assert 'if (tramp_off + (store_retry ? 24 : 20) > tramp_size)' in fallback
-store_at = fallback.index('*(uint32_t *)(tramp_rw + tramp_off) = insn;')
-retry_at = fallback.index('if (store_retry)')
-assert store_at < retry_at, 'the retry word comes after the store'
-assert '*(uint32_t *)(tramp_rw + tramp_off) = ios_x18_store_retry(16);' in fallback[retry_at:]
-# The budget pass gives each site 32 bytes; the retry form is 24 with the branch back.
-assert 'need += 32;' in function(native, 'size_t ios_jit_x18_tramp_need( const char *text, size_t text_size, int stores )')
-print('PASS: the patcher emits the retry word after a store of x18 only, within a 24-byte check')
-
-with tempfile.TemporaryDirectory(prefix='madeira-x18-store-') as directory:
-    folder = Path(directory)
-    source = folder / 'check.c'
-    source.write_text(code)
-    exe = folder / 'check'
-    cc = os.environ.get('CC', 'cc')
-    flags = [cc, '-std=gnu11', '-Wall', '-Wextra', '-Wno-unused-function', '-Wno-tautological-compare', '-Werror', '-g', str(source), '-o', str(exe)]
-    sanitize = ['-fsanitize=address,undefined', '-fno-sanitize-recover=all']
-    if subprocess.run(flags[:1] + sanitize + flags[1:], capture_output=True).returncode != 0:
-        subprocess.run(flags, check=True)
-    out = subprocess.run([str(exe)], capture_output=True, text=True)
-    print(out.stdout, end='')
-    assert out.returncode == 0, out.stderr
+print(("PASS" if not failures else "FAILED") + ": a store of x18 takes two tries (opengl32, gl-backend sessions)")
+sys.exit(1 if failures else 0)

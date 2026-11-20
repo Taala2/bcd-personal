@@ -164,7 +164,6 @@ PRELUDE = r'''
 #include <unistd.h>
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
-#include <mach/mach_error.h>
 
 #define arm_thread_state64_t fake_arm_thread_state64_t
 typedef struct { uint64_t __x[29]; uint64_t __fp, __lr, __sp, __pc; } fake_arm_thread_state64_t;
@@ -189,42 +188,13 @@ static kern_return_t counting_read( vm_map_t t, mach_vm_address_t a, mach_vm_siz
 
 # the window of the 596 log: Battle.net.exe 0x400000, ntdll 0xfff40000, libcef.dll 0x6c7b0000 (size 0x9f84000), TEB32 0x302000, PEB32 0x311000
 MAIN = r'''
-/* The guest window: a 4 GB aligned range that is free in this process, found at its first use. A fixed address is not safe: on
- * macOS 15 arm64 a process already has [0x1000000000, 0x7000000000) reserved (prot 0/0), and 0x5000000000 was inside it. The range
- * is found with mach_vm_map and released again, so the fixed allocations of the scenarios land in free memory; MADEIRA_TEST_WIN
- * (hex) names a base instead, so that every run of one check uses the same window. A base that cannot be found or is not 4 GB
- * aligned ends the run like a failed allocation. */
-static uint64_t test_win_base(void)
-{
-    static uint64_t base;
-    const char *e;
-
-    if (base) return base;
-    e = getenv("MADEIRA_TEST_WIN");
-    if (e && *e) base = strtoull(e, NULL, 16);
-    else
-    {
-        mach_vm_address_t m = 0;
-        kern_return_t kr = mach_vm_map(mach_task_self(), &m, 0x100000000ULL, 0xffffffffULL, VM_FLAGS_ANYWHERE, MACH_PORT_NULL, 0, FALSE,
-                                       VM_PROT_NONE, VM_PROT_NONE, VM_INHERIT_DEFAULT);
-        if (kr != KERN_SUCCESS)
-        {
-            fprintf(stderr, "[win] mach_vm_map(4 GB, 4 GB aligned, anywhere) = %d (%s)\n", kr, mach_error_string(kr));
-            puts("win-failed");
-            exit(3);
-        }
-        mach_vm_deallocate(mach_task_self(), m, 0x100000000ULL);
-        base = m;
-    }
-    if (!base || (base & 0xffffffffULL) || base < 0x100000000ULL)
-    {
-        fprintf(stderr, "[win] 0x%llx is no 4 GB aligned window base\n", (unsigned long long)base);
-        puts("win-failed");
-        exit(3);
-    }
-    return base;
-}
-#define WIN test_win_base()
+/* arm64 macOS reserves 0x1000000000-0x7000000000 in every process (the M5 Max, build 672): the window moves to
+   0x15000000000 there; on the Intel host it stays at 0x5000000000. */
+#if defined(__aarch64__)
+#define WIN 0x15000000000ULL
+#else
+#define WIN 0x5000000000ULL
+#endif
 #define TEB64_G 0x300000u
 #define TEB32_G 0x302000u
 #define PEB32_G 0x311000u
@@ -235,30 +205,24 @@ static uint64_t test_win_base(void)
 #define DBG_RVA 0x96bf3bcu
 #define RSDS_RVA 0x96bf3d8u
 
-/* A FIXED allocation that fails says why, on stderr (the checks print it as their detail): the address and size asked for, the
- * kernel's answer, the page size and the first mapping at or above the address. stdout ("alloc-failed") and exit(3) stay as they were. */
-static void alloc_failed_report(uint64_t a, size_t n, kern_return_t kr)
-{
-    mach_vm_address_t ra = a;
-    mach_vm_size_t rs = 0;
-    vm_region_basic_info_data_64_t ri;
-    mach_msg_type_number_t rc = VM_REGION_BASIC_INFO_COUNT_64;
-    mach_port_t ro = MACH_PORT_NULL;
-    kern_return_t rk = mach_vm_region(mach_task_self(), &ra, &rs, VM_REGION_BASIC_INFO_64, (vm_region_info_t)&ri, &rc, &ro);
-
-    fprintf(stderr, "[alloc_at] mach_vm_allocate(0x%llx, 0x%zx, VM_FLAGS_FIXED) = %d (%s); page size 0x%lx\n",
-            (unsigned long long)a, n, kr, mach_error_string(kr), (unsigned long)vm_page_size);
-    if (rk == KERN_SUCCESS)
-        fprintf(stderr, "[alloc_at]   first mapping at or above it: [0x%llx, 0x%llx) prot %d/%d%s\n", (unsigned long long)ra,
-                (unsigned long long)(ra + rs), ri.protection, ri.max_protection, ra < a + n ? " -- OVERLAPS the request" : "");
-    else
-        fprintf(stderr, "[alloc_at]   mach_vm_region = %d (%s)\n", rk, mach_error_string(rk));
-}
 static uint64_t alloc_at(uint64_t a, size_t n)
 {
-    mach_vm_address_t m = a;
-    kern_return_t kr = mach_vm_allocate(mach_task_self(), &m, n, VM_FLAGS_FIXED);
-    if (kr != KERN_SUCCESS) { alloc_failed_report(a, n, kr); puts("alloc-failed"); exit(3); }
+    /* Host page by host page (M5 Max, build 672: 16 KB pages there, 4 KB on the Intel VM): the window's pieces sit at
+       4 KB offsets, so two may share a host page; a page an earlier piece already mapped is fine. */
+    const uint64_t pg = vm_page_size, lo = a & ~(pg - 1), hi = (a + n + pg - 1) & ~(pg - 1);
+    for (uint64_t p = lo; p < hi; p += pg)
+    {
+        mach_vm_address_t m = p;
+        kern_return_t k = mach_vm_allocate(mach_task_self(), &m, pg, VM_FLAGS_FIXED);
+        if (k == KERN_NO_SPACE)
+        {   /* taken as already there only when it is a read-write page (one an earlier piece of this program mapped) */
+            mach_vm_address_t q = p; mach_vm_size_t qs = 0; vm_region_basic_info_data_64_t ri;
+            mach_msg_type_number_t rc = VM_REGION_BASIC_INFO_COUNT_64; mach_port_t ro;
+            if (mach_vm_region(mach_task_self(), &q, &qs, VM_REGION_BASIC_INFO_64, (vm_region_info_t)&ri, &rc, &ro) == KERN_SUCCESS
+                && q <= p && (ri.protection & 3) == 3) continue;
+        }
+        if (k != KERN_SUCCESS) { puts("alloc-failed"); exit(3); }
+    }
     return a;
 }
 static void w32(uint64_t a, uint32_t v) { memcpy((void *)a, &v, 4); }
@@ -574,9 +538,7 @@ check('tools/int3x86-match.py (finds a report\'s code window in a PE file by vot
 # ---------------------------------------------------------------- 4. catalog, launcher, CI, iOS compile
 wine0 = Path(os.environ.get('WINE_SRC', root / 'wine'))
 if (wine0 / 'include/winternl.h').exists() and shutil.which('xcrun'):
-    # stdarg.h first, as Wine's own sources do: minwindef.h defines __ms_va_list as va_list, which winternl.h uses
     off_src = r'''
-#include <stdarg.h>
 #include <stddef.h>
 #include "windef.h"
 #include "winternl.h"
@@ -593,7 +555,9 @@ int main(void) { return 0; }
     check('the header\'s TEB32 offsets are the ones the pinned headers assert below', all(got.get(k) == v for k, v in wanted.items()), str(got))
     with tempfile.TemporaryDirectory(prefix='i3x-off-') as dd:
         (Path(dd) / 'off.c').write_text(off_src)
-        r = subprocess.run(['xcrun', '-sdk', 'macosx', 'clang', '-fsyntax-only', f'-I{wine0 / "include"}', f'-I{wine0 / "build-macos/include"}',
+        # -arch x86_64 (the M5 Max, build 672): the 32-bit structs are fixed-width, so the offsets are the same on any
+        # host; wine's headers find va_list on the x86_64 path the Intel VM had (on arm64, winternl.h line 5030 has none).
+        r = subprocess.run(['xcrun', '-sdk', 'macosx', 'clang', '-arch', 'x86_64', '-fsyntax-only', f'-I{wine0 / "include"}', f'-I{wine0 / "build-macos/include"}',
                             '-D__WINESRC__', str(Path(dd) / 'off.c')], capture_output=True, text=True)
         check('the pinned winternl.h has TEB32 at those offsets', r.returncode == 0, r.stderr[-2000:])
 else:

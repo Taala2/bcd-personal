@@ -523,10 +523,12 @@ fi
 # fork's change; stripped like the kernelbase variant and padded to at least SizeOfImage + 0x10000 like the other extra DLLs; verified (the
 # shipped DLL's machine and exports, not based at 0x7a800000) before it ships. Its delay import of glu32 stays, as in the shipped file. The
 # objects are removed afterwards (wine/build-arm64ec is cached).
+# madeira-bcd personal (2026-11-23, upstream 0.1.712): the pin test leaves out dlls/opengl32/unix_*. Wine builds those into opengl32.so only,
+# never into this DLL, and tools/patch-wine-gl-null-sync.py changes unix_private.h earlier in CI (run 45181174282: not built).
 if [ -n "$OGL" ]; then
     og="$B/dlls/opengl32/arm64ec-windows/opengl32.dll"
     og_tmp="$SHIP/opengl32-optin.dll.tmp"
-    if git -C "$R/wine" diff --quiet -- dlls/opengl32 && grep -q "ios_wow_host_ptr" "$R/wine/dlls/opengl32/unix_private.h"; then
+    if git -C "$R/wine" diff --quiet -- dlls/opengl32 ":(exclude)dlls/opengl32/unix_*" && grep -q "ios_wow_host_ptr" "$R/wine/dlls/opengl32/unix_private.h"; then
         rm -f "$og" "$B"/dlls/opengl32/arm64ec-windows/*.o
         make -C "$B" -j"$JOBS" dlls/opengl32/arm64ec-windows/opengl32.dll > "$B.opengl32.log" 2>&1
         if [ -f "$og" ] && cp "$og" "$og_tmp" && "$MINGW/arm64ec-w64-mingw32-strip" --strip-debug "$og_tmp"; then

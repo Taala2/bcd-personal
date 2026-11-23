@@ -71,6 +71,38 @@ check("install paths map to the names dyld_info prints",
                              "/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit")]
       == ["libSystem", "libc++", "libobjc", "SwiftUI", "libswift_Concurrency", "IOKit"])
 
+# madeira-bcd personal (2026-11-23): a Mach-O built for a newer iOS than an older runtime's is left out for that runtime
+check("runtime versions are read from both cache folder forms, and an unknown folder gives none",
+      crs.runtime_version("/Library/Developer/CoreSimulator/Caches/dyld/24H232/com.apple.CoreSimulator.SimRuntime.iOS-18-5.22F77") == (18, 5)
+      and crs.runtime_version("/Library/Developer/CoreSimulator/Volumes/iOS_23A8464/Library/Developer/CoreSimulator/Profiles/Runtimes/"
+                              "iOS 26.0.simruntime/Contents/Resources/RuntimeRoot/System/Library/Caches/com.apple.dyld") == (26, 0)
+      and crs.runtime_version("/tmp/cache") is None)
+with tempfile.TemporaryDirectory(prefix="bcd-rts-minos-") as t:
+    app = Path(t, "A.app")
+    (app / "gl").mkdir(parents=True)
+    for n in ("A", "gl/kk.dylib"):
+        (app / n).write_bytes(b"\xcf\xfa\xed\xfe" + bytes(28))
+    saved = (crs.minos, crs.linked, crs.imports)
+    seen = []
+    crs.minos = lambda f: (26, 0) if f.name == "kk.dylib" else (18, 0)
+    crs.linked = lambda f: seen.append(f.name) or []
+    crs.imports = lambda f: []
+    try:
+        newer18 = []
+        crs.check(app, None, None, (18, 5), newer18)
+        on18 = sorted(seen)
+        seen.clear()
+        crs.check(app, None, None, (26, 0), [])
+        on26 = sorted(seen)
+        seen.clear()
+        crs.check(app, None, None)
+        unknown = sorted(seen)
+    finally:
+        crs.minos, crs.linked, crs.imports = saved
+check("a dylib built for iOS 26 is left out on iOS 18.5 (and said so), checked on iOS 26.0 and on a runtime of unknown version",
+      on18 == ["A"] and newer18 == [str(Path("gl/kk.dylib")) + " (iOS 26.0)"] and on26 == ["A", "kk.dylib"] and unknown == ["A", "kk.dylib"],
+      (on18, newer18, on26, unknown))
+
 rel = Path.home() / "madeira-local/state/release"
 older = [d for v, d in crs.installed_runtimes() if crs.sdk_version() and v < crs.sdk_version()] if sys.platform == "darwin" else []
 if older and (rel / "BCD-0.1.665.ipa").is_file() and (rel / "BCD-0.1.682.ipa").is_file():

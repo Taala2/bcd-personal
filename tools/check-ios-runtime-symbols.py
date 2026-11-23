@@ -20,6 +20,10 @@ simulator/device difference, not a version one, and is left out. For each older 
   weak Swift/ObjC import    note only: the compiler guards those (availability checks, @backDeployed)
   a system library missing  error when linked strongly
 Flat-namespace imports (some Mesa/Vulkan dylibs) are looked up in all the system libraries that binary links.
+madeira-bcd personal (2026-11-23, upstream 0.1.712): a Mach-O whose own minimum (LC_BUILD_VERSION minos) is above an older runtime's
+iOS is left out for that runtime and counted. KosmicKrisp's libvulkan_kosmickrisp_real.dylib is built for iOS 26.0 (Metal 4), and the
+app loads it only from iOS 26 (WineProcessBridge.m bcd_kosmickrisp_unusable). Its patch 0036 imports VTFrameProcessor, an iOS 26 class,
+which the iOS 18 runtimes lack. Every other file, and every file of a runtime whose version is not known, is checked as before.
 
 Limit: the simulator's lowest layer is not the device's. The iOS 26.4 simulator's libsystem_kernel exports pipe2, an iPadOS 26.6.2
 device does not, so this check does NOT catch 0.1.682's crash; tools/check-weak-libsystem.py and tools/check-availability-warnings.py
@@ -76,6 +80,18 @@ def imports(binary):
     return out
 
 
+def minos(binary):
+    """The Mach-O's own minimum iOS as a tuple (LC_BUILD_VERSION), or None."""
+    m = re.search(r"^\s*minos\s+(\d+(?:\.\d+)*)", run("xcrun", "vtool", "-show-build", str(binary)), re.M)
+    return tuple(int(x) for x in m.group(1).split(".")) if m else None
+
+
+def runtime_version(cache_dir):
+    """The iOS version of a simulator runtime's cache folder (...SimRuntime.iOS-18-5... or iOS 18.5.simruntime), or None."""
+    m = re.search(r"iOS[- ](\d+)[-.](\d+)", str(cache_dir))
+    return (int(m.group(1)), int(m.group(2))) if m else None
+
+
 def flat(path):
     return re.sub(r"/Versions/[^/]+/", "/", path)   # iOS frameworks are flat
 
@@ -85,11 +101,16 @@ def lib_exports(cache, path):
     return e if e is not None else cache.exports(flat(path))
 
 
-def check(app, base, older):
+def check(app, base, older, version=None, newer_only=None):
     errors, notes, skipped = [], [], 0
     files = sorted(p for p in Path(app).rglob("*") if p.is_file() and not p.is_symlink() and is_macho(p))
     for f in files:
         rel = f.relative_to(app)
+        own = minos(f) if version else None
+        if own and own > version:
+            if newer_only is not None:
+                newer_only.append(f"{rel} (iOS {'.'.join(map(str, own))})")
+            continue          # built for a newer iOS than this runtime's: never loaded there
         libs = {}
         for path, weak in linked(f):
             if path.startswith(("/usr/lib/", "/System/")):
@@ -168,9 +189,12 @@ def main():
     bad = 0
     for d in argv[2:]:
         name = next((p for p in Path(d).parts if p.endswith(".simruntime")), d)
-        files, errors, notes, skipped = check(app, base, DyldCache(d))
+        newer = []
+        files, errors, notes, skipped = check(app, base, DyldCache(d), runtime_version(d), newer)
         print(f"== {name}: {len(files)} Mach-O files, {len(errors)} error(s), {len(notes)} guarded weak import(s) missing there, "
               f"{skipped} import(s) not in the baseline simulator (left out)")
+        for n in newer:
+            print(f"   left out: {n} is built for a newer iOS than this runtime's")
         for e in errors:
             print(f"::error::{name}: {e}")
         for n in notes[:40]:

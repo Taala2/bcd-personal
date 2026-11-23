@@ -1653,6 +1653,19 @@ jobs:
             app/Madeira/licenses/KosmicKrisp-Mesa-license.rst
           key: kosmickrisp-v1-${{ hashFiles('build/mesa-ios/build-kosmickrisp-bcd.sh', 'build/mesa-ios/build-kosmickrisp.sh', 'build/mesa-ios/build-playport-kosmickrisp.sh', 'build/mesa-ios/fetch-playport.py', 'build/mesa-ios/kk-stale-source.sh', 'build/mesa-ios/kosmickrisp-ios-arm64.cross', 'build/mesa-ios/kosmickrisp-patches/*.patch', 'build/mesa-ios/playport-patches/*.patch') }}
 
+      # madeira-bcd personal (2026-11-23): Homebrew's llvm is 23 on the runner, and BCD pins a SPIRV-LLVM-Translator for LLVM 21 and 22 only.
+      # The build script takes a versioned llvm@22 when Homebrew's llvm is neither, so install it then (only on a cache miss). If this fails,
+      # the build step refuses LLVM 23 and only warns, as before.
+      - name: Install LLVM 22 for KosmicKrisp when Homebrew's llvm is newer
+        if: steps.kkcache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        run: |
+          major=$("$(brew --prefix llvm)/bin/llvm-config" --version 2>/dev/null | cut -d. -f1 || true)
+          case "$major" in
+            21|22) echo "Homebrew's llvm is $major: nothing to install" ;;
+            *) brew install llvm@22 && "$(brew --prefix llvm@22)/bin/llvm-config" --version ;;
+          esac
+
       - name: Build KosmicKrisp for iOS
         id: kkbuild
         if: steps.kkcache.outputs.cache-hit != 'true'

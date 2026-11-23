@@ -48,11 +48,17 @@ esac
 # The machine's LLVM, and the SPIRV-LLVM-Translator that matches it (the translator is built against one LLVM major version).
 LLVM_CONFIG="${KK_LLVM_CONFIG:-}"
 if [ -z "$LLVM_CONFIG" ]; then
-    if command -v brew >/dev/null 2>&1 && [ -x "$(brew --prefix llvm 2>/dev/null)/bin/llvm-config" ]; then
-        LLVM_CONFIG="$(brew --prefix llvm)/bin/llvm-config"
-    else
-        LLVM_CONFIG="$(command -v llvm-config || true)"
+    if command -v brew >/dev/null 2>&1; then
+        # madeira-bcd personal (2026-11-23): Homebrew's `llvm` moved past 22 (23 on the CI runner), so an installed versioned llvm@22 or
+        # llvm@21 is taken when `llvm` itself is neither; with none of them, the first one found is kept and refused below as before.
+        for formula in llvm llvm@22 llvm@21; do
+            candidate="$(brew --prefix "$formula" 2>/dev/null)/bin/llvm-config"
+            [ -x "$candidate" ] || continue
+            [ -n "$LLVM_CONFIG" ] || LLVM_CONFIG="$candidate"
+            case "$("$candidate" --version | cut -d. -f1)" in 21|22) LLVM_CONFIG="$candidate"; break ;; esac
+        done
     fi
+    [ -n "$LLVM_CONFIG" ] || LLVM_CONFIG="$(command -v llvm-config || true)"
 fi
 [ -n "$LLVM_CONFIG" ] && [ -x "$LLVM_CONFIG" ] || { echo "llvm-config not found: install Homebrew's llvm or set KK_LLVM_CONFIG" >&2; exit 1; }
 LLVM_PREFIX="$("$LLVM_CONFIG" --prefix)"

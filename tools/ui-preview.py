@@ -128,6 +128,13 @@ ENGINE_BOUND |= {"BCDFoldableLive.swift"}
 # madeira-bcd personal: BCDNWJS64Install.swift (the 64-bit NW.js download and launch glue) names LibraryModel, LibraryEntry and
 # LogStore, so it stays out; BCDNWJS64.swift is Foundation only and builds here.
 ENGINE_BOUND |= {"BCDNWJS64Install.swift"}
+# Steam for Windows (experimental, branch steam-client): the card under Settings > BCD Dock is plain values and a view (BCDSteamDesktop.swift) and
+# builds here on a sample (-BCDTab settings-dock-steam, -steam-downloading, -steam-installed); the install, the library entry and the session stay out.
+ENGINE_BOUND |= {"BCDSteamDesktopLive.swift"}
+# Settings > Recommended settings (round 707): the model (BCDRecommendedCatalog.swift) and the page (BCDRecommendedCatalogView.swift, with a sample of its own
+# under BCD_PREVIEW) are plain Swift and build here; the live backend reads the list in use through GameRecommendations and stays out. The adapter that turns the
+# list's own types into the model (RecommendedCatalogAdapter.swift) is not a BCD*.swift file, so this build never takes it in.
+ENGINE_BOUND |= {"BCDRecommendedCatalogLive.swift"}
 SCREENS += ["ingame-menu", "starting", "overlay"]
 
 

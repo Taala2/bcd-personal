@@ -10,6 +10,7 @@ hands "Failed to create MTLLibrary" to the game and Enshrouded ends itself. The 
 libraries at the size optimisation level and raises the shader cache cap. Only a game with vulkan = kosmickrisp loads it.
 
   1. the sources: the contributor's MIT header and BCD's changes marked; the marker the build step reads; the slow-compile dump capped;
+     the compile census (a "[kk-retry] compiles" line every 10 s with activity; a compile past 60 s named while it runs);
   2. CI: its own step after the KosmicKrisp cache steps (the cached library stays the real one), a failed run only warns, a failed
      KosmicKrisp build also removes a _real left over; the packaging check knows the shim; the notices credit it;
   3. on a Mac with Xcode: build.sh against a stand-in KosmicKrisp (an arm64 iOS 26 dylib with the two entry points) in a scratch tree:
@@ -45,6 +46,29 @@ check("kk_retry.m: at most eight slow-compile sources saved a run",
 check("kk_retry.m: retries only a lost compiler connection, with a fresh compiler, and passes every other error back",
       "XPC_ERROR_CONNECTION_INTERRUPTED" in m and "if (r || !kkr_is_xpc(err) || i == KKR_TRIES) break;" in m and "id fresh = kkr_fresh(self);" in m)
 check("kk_retry.m: a shader cache cap the player set is kept (only BCD's default 512M is raised)", 'if (!cs || !strcmp(cs, "512M"))' in m)
+check("kk_retry.m: the compile census (2026-11-20, X-Plane 12): BCD's change marked; every compile timed inside the gate; a line every 10 s"
+      " only when compiles finished, failed or run; a compile past 60 s named while it runs and its MSL saved under the same cap, not twice",
+      "// Modified by BCD (thebcd69), 2026-11-20: a compile census (log only, nothing else changes)" in m
+      and "int _slot = kkr_begin(KIND, DESC); KKR_TEST_DELAY id _r = (X);" in m
+      and m.index("dispatch_semaphore_wait(kkr_sem, DISPATCH_TIME_FOREVER)") < m.index("int _slot = kkr_begin(KIND, DESC)") < m.index("if (kkr_sem) dispatch_semaphore_signal(kkr_sem); _r; })")
+      and "static const double kkr_overdue_s = 60;" in m and "if (any) {" in m
+      and "dispatch_source_set_timer(kkr_timer, dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC), 10 * NSEC_PER_SEC, NSEC_PER_SEC);" in m
+      and "kkr_dump(d, late[i].secs, YES);" in m and "if (dt > 10 && !named && [desc isKindOfClass:[MTL4LibraryDescriptor class]]) kkr_dump(desc, dt, NO);" in m
+      and 'KKR_BODY(o_rps(self, s, desc, opt, &err), "render pipeline", KKR_RPS)' in m and 'KKR_BODY(o_cps(self, s, desc, opt, &err), "compute pipeline", KKR_CPS)' in m)
+check("kk_retry.m: a library request without MSL (2026-11-22, X-Plane 12): BCD's change marked; refused with an error before the gate,"
+      " so it never reaches Metal's compiler; counted in the census; the first four named with their caller; another descriptor class goes on",
+      "// Modified by BCD (thebcd69), 2026-11-22: a library request without MSL" in m
+      and "if ([desc isKindOfClass:[MTL4LibraryDescriptor class]] && ((MTL4LibraryDescriptor *)desc).source.length == 0) {\n        kkr_no_source(desc);" in m
+      and m.index("kkr_no_source(desc);") < m.index("KKR_BODY_EXPR(o_lib(self, s, desc, &err)")
+      and "return nil;\n    }\n    if (![desc isKindOfClass:[MTL4LibraryDescriptor class]]) kkr_other_class(desc);" in m
+      and 'if (refused) n += snprintf(line + n, sizeof line - n, "; %ld without MSL refused", refused);' in m
+      and "if (n > 4) return;" in m)
+t = (K / "test_mac.m").read_text()
+check("test_mac.m: the no-MSL cases (nil and empty source refused at once with the shim's error, counted in the census)",
+      'printf("no-MSL case' in t and 'strstr(line, "; 2 without MSL refused")' in t and "took < 0.5" in t)
+check("test_mac.m: the census cases (quiet when idle, a running compile named, the finished one counted); its dumps go to the temporary folder",
+      'printf("census when idle' in t and "in flight 1 (oldest " in t and 'strstr(line, "library 1 (avg ")' in t
+      and "NSTemporaryDirectory()" in m)
 check("build.sh: the contributor's header and BCD's changes; the shim told by its marker; made in a temporary folder, moved in only when linked",
       b.startswith("#!/bin/bash\n# SPDX-License-Identifier: MIT\n# Copyright 2026 RageMC\n") and "# Modified by BCD (thebcd69), 2026-11-16:" in b
       and 'MARK="kk-retry: shim in front of KosmicKrisp"' in b and 'if grep -q "$MARK" "$LIB"; then' in b

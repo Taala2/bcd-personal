@@ -58,7 +58,7 @@ check("nothing is looked up or touched without a switch (find_key and the exit h
       and "if (!ios_exit_pool_diag_on() && !ios_exit_pool_skip_on()) return;" in block)
 check("libobjc's functions come from dlsym (no link dependency, no header), and the key is used only for exactly one changed slot that the pop cleared again",
       block.count("dlsym( RTLD_DEFAULT,") == 6 and "if (n == 1 && !tsd[found])" in block and "if (ios_exit_pool_skip_on() && key >= 40 && tsd[key])" in block)
-# madeira-bcd personal (2026-11-17): libobjc may keep a pool's first objects in further direct slots instead of a page (the macos-15
+# madeira-bcd (2026-11-17): libobjc may keep a pool's first objects in further direct slots instead of a page (the macos-15
 # runner: 44 and 45, with the pool's own slot 43 left at 0x1). find_key autoreleases one probe object to see them, keeps only the slots
 # the pop gives back, and the exit clears them with the pool's slot.
 check("find_key also records the slots of a pool's first objects (one autoreleased probe, only those the pop clears) and the exit clears them",
@@ -131,7 +131,7 @@ static void *worker( void *arg )
         fflush( stdout );
         return NULL;
     }
-    if (scenario == 8)                                         /* madeira-bcd personal: diagnostic only, where the pool lives on this Mac */
+    if (scenario == 8)                                         /* madeira-bcd: diagnostic only, where the pool lives on this Mac */
     {
         uintptr_t b; void **tsd; int s, phase;
         @TSDBASE@
@@ -200,7 +200,7 @@ int main( int argc, char **argv )
             check("with MADEIRA_EXIT_POOL_SKIP=1 the same thread exits cleanly, and the log says it cleared the slot (the pool's pages leak)",
                   fix.returncode == 0 and "survived" in fix.stdout and "clears libobjc's autorelease-pool slot" in fix.stderr, "rc=%d %s" % (fix.returncode, fix.stderr))
             if not (fix.returncode == 0 and "survived" in fix.stdout):
-                # madeira-bcd personal (2026-11-17): diagnostic only, no verdict: which TSD slots this Mac's libobjc uses for a pool
+                # madeira-bcd (2026-11-17): diagnostic only, no verdict: which TSD slots this Mac's libobjc uses for a pool
                 # (macos-15 runner: the found slot held 0x1, the empty-pool placeholder, at exit, and the thread still crashed).
                 d = run(8)
                 print("     diagnostic, non-NULL TSD slots (rc=%d):\n     %s" % (d.returncode, d.stdout.strip().replace("\n", "\n     ")))

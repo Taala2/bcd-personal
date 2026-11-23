@@ -1135,7 +1135,7 @@ static void contexts_from_server( CONTEXT *context, struct context_data server_c
  * TSD slot (40..49, libobjc's __PTK_FRAMEWORK_OBJC_KEYn range) that went from NULL to non-NULL is the key; exactly one such slot or the
  * mitigation stays off ("[exit-pool] key not found"). libobjc's functions are looked up with dlsym (they are not in the SDK headers). */
 static volatile int ios_exit_pool_key = -1;   /* >= 40: the TSD slot of libobjc's autorelease pool; -1: not looked for yet; -2: not found */
-/* madeira-bcd personal (2026-11-17): bit k = direct slot 40+k, where libobjc keeps a pool's first objects instead of a page. On the
+/* madeira-bcd (2026-11-17): bit k = direct slot 40+k, where libobjc keeps a pool's first objects instead of a page. On the
  * macos-15 runner an autorelease left the pool's slot (43) at 0x1, the empty-pool placeholder, and put the object in 44 and 45; clearing 43
  * alone left the destructor the freed object there (check-exit-pool, CI 44102470041). */
 static volatile unsigned ios_exit_pool_more;
@@ -1192,7 +1192,7 @@ static void ios_exit_pool_find_key( void )
     token = push();
     for (k = 0; k < 10; k++)
         if (!before[k] && tsd[40 + k]) { found = 40 + k; n++; }
-    {   /* madeira-bcd personal: one autoreleased object, to see the slots libobjc fills for a pool's first objects (see ios_exit_pool_more) */
+    {   /* madeira-bcd: one autoreleased object, to see the slots libobjc fills for a pool's first objects (see ios_exit_pool_more) */
         void *(*autorel)( void * ) = (void *(*)( void * ))dlsym( RTLD_DEFAULT, "objc_autorelease" );
         void *(*get_class)( const char * ) = (void *(*)( const char * ))dlsym( RTLD_DEFAULT, "objc_getClass" );
         void *(*create)( void *, size_t ) = (void *(*)( void *, size_t ))dlsym( RTLD_DEFAULT, "class_createInstance" );
@@ -1257,7 +1257,7 @@ static void ios_exit_pool_at_exit( void )
             dprintf( 2, "[exit-pool] tid=%04x clears libobjc's autorelease-pool slot %d (%p) so its thread-exit destructor does not walk the pool; "
                         "the pool's pages leak (#%u, MADEIRA_EXIT_POOL_SKIP)\n", tid, key, tsd[key], n );
         tsd[key] = NULL;
-        {   /* madeira-bcd personal: and the slots of the pool's first objects (ios_exit_pool_more) */
+        {   /* madeira-bcd: and the slots of the pool's first objects (ios_exit_pool_more) */
             unsigned more = ios_exit_pool_more;
             int k;
 

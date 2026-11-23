@@ -683,7 +683,27 @@ final class MetalBackedView: UIView {
         return CGPoint(x: x / n, y: y / n)
     }
     private func activeTouches(_ event: UIEvent?) -> [UITouch] {
-        (event?.allTouches ?? []).filter { $0.phase != .ended && $0.phase != .cancelled }
+        // A touchpad gesture counts only its own fingers: a control held in the controls window is not a second finger on the pad.
+        let all = padGesture ? (event?.touches(for: self) ?? []) : (event?.allTouches ?? [])
+        return all.filter { $0.phase != .ended && $0.phase != .cancelled }
+    }
+
+    /// madeira-bcd (2026-11-20, the owner): iPhone Duo's touchpad below the fold (BCDTabletopTouchpad, BCDFoldable.swift). A gesture
+    /// whose first finger lands below the fold takes the trackpad path below, whatever the pointer mode (Tap to click, the direct
+    /// launch's Windows touch) and the touch-to-mouse gate say, until its last finger lifts. Without the tabletop pose, on any other
+    /// device or with the touchpad off, `padGesture` stays false and every path is what it was.
+    private var padGesture = false
+    private static var padLogged = false
+    private func padBegins(_ touches: Set<UITouch>, _ event: UIEvent?) -> Bool {
+        guard BCDFoldable.active, let below = FoldTabletop.shared.bottom, let w = window, let t = touches.first else { return false }
+        let mine = (event?.touches(for: self) ?? []).filter { $0.phase != .ended && $0.phase != .cancelled }
+        guard mine.count == touches.count,   // the first finger(s) of a gesture
+              BCDTabletopTouchpad.owns(t.location(in: w), below: below, on: BCDTabletopTouchpad.on) else { return false }
+        if !Self.padLogged {
+            Self.padLogged = true
+            fputs("[fold] touchpad: a gesture below the fold drives the pointer like a trackpad (below=\(below))\n", stderr)
+        }
+        return true
     }
 
     // Direct touches that began while TouchMouseGate was suppressing stay
@@ -715,9 +735,11 @@ final class MetalBackedView: UIView {
         BCDTouchFeelModel.shared.gameTouched()   // madeira-bcd (round 604): a touch brings back touch controls that auto-hid (before the pad overlay's filter below drops it); nothing with auto-hide off
         guard let touches = BCDTouchExtras.filter(self, touches, .began) else { return }   // madeira-bcd (round 604): aim mode, touch gestures, the Pencil; one static flag when off
         if HardwareInput.shared.interceptTouches(touches, event, .began) { return }
-        guard let touches = tmgFilter(touches, .began) else { return }
-        if touchPointerMode { touchModeBegan(touches); return }
-        guard desktopMode || !InputSettings.shared.directTouch else {
+        if !padGesture && padBegins(touches, event) { padGesture = true }   // madeira-bcd (2026-11-20): iPhone Duo's touchpad below the fold
+        let pad = padGesture
+        guard let touches = pad ? touches : tmgFilter(touches, .began) else { return }
+        if touchPointerMode && !pad { touchModeBegan(touches); return }
+        guard pad || desktopMode || !InputSettings.shared.directTouch else {
             guard let t = touches.first else { return }
             let (x, y) = mapTouch(t)
             winios_post_touch_down(x, y)
@@ -763,9 +785,10 @@ final class MetalBackedView: UIView {
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touches = BCDTouchExtras.filter(self, touches, .moved) else { return }   // madeira-bcd (round 604)
         if HardwareInput.shared.interceptTouches(touches, event, .moved) { return }
-        guard let touches = tmgFilter(touches, .moved) else { return }
-        if touchPointerMode { touchModeMoved(touches, event); return }
-        guard desktopMode || !InputSettings.shared.directTouch else {
+        let pad = padGesture   // madeira-bcd (2026-11-20): iPhone Duo's touchpad below the fold
+        guard let touches = pad ? touches : tmgFilter(touches, .moved) else { return }
+        if touchPointerMode && !pad { touchModeMoved(touches, event); return }
+        guard pad || desktopMode || !InputSettings.shared.directTouch else {
             guard let t = touches.first else { return }
             let (x, y) = mapTouch(t)
             winios_post_touch_move(x, y)
@@ -842,9 +865,11 @@ final class MetalBackedView: UIView {
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touches = BCDTouchExtras.filter(self, touches, .ended) else { return }   // madeira-bcd (round 604)
         if HardwareInput.shared.interceptTouches(touches, event, .ended) { return }
-        guard let touches = tmgFilter(touches, .ended) else { return }
-        if touchPointerMode { touchModeEnded(touches, event); return }
-        guard desktopMode || !InputSettings.shared.directTouch else {
+        let pad = padGesture   // madeira-bcd (2026-11-20): iPhone Duo's touchpad below the fold, until its last finger lifts
+        defer { if pad && activeTouches(event).isEmpty { padGesture = false } }
+        guard let touches = pad ? touches : tmgFilter(touches, .ended) else { return }
+        if touchPointerMode && !pad { touchModeEnded(touches, event); return }
+        guard pad || desktopMode || !InputSettings.shared.directTouch else {
             guard let t = touches.first else { return }
             let (x, y) = mapTouch(t)
             winios_post_touch_up(x, y)
@@ -888,9 +913,11 @@ final class MetalBackedView: UIView {
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         guard let touches = BCDTouchExtras.filter(self, touches, .cancelled) else { return }   // madeira-bcd (round 604)
         if HardwareInput.shared.interceptTouches(touches, event, .cancelled) { return }
-        guard let touches = tmgFilter(touches, .cancelled) else { return }
-        if touchPointerMode { touchModeCancelled(touches); return }
-        guard desktopMode || !InputSettings.shared.directTouch else {
+        let pad = padGesture   // madeira-bcd (2026-11-20): iPhone Duo's touchpad below the fold; a cancel ends the gesture
+        defer { if pad { padGesture = false } }
+        guard let touches = pad ? touches : tmgFilter(touches, .cancelled) else { return }
+        if touchPointerMode && !pad { touchModeCancelled(touches); return }
+        guard pad || desktopMode || !InputSettings.shared.directTouch else {
             guard let t = touches.first else { return }
             let (x, y) = mapTouch(t)
             winios_post_touch_up(x, y)
@@ -1436,6 +1463,19 @@ struct ContentView: View {
         var entry = entry
         let isNew = !library.entries.contains { $0.id == entry.id }
         if GameRecommendations.prepare(&entry, new: isNew) { library.save(entry) }
+        // madeira-bcd (2026-11-22): X-Plane 12 at its lowest graphics when the game's settings say `xplane-graphics = lowest`
+        // (XPlaneGraphics.swift): its Resources/settings.txt defaults are lowered before the start, and put back when the line
+        // goes. A Steam game's install folder, else the program's folder; nothing for a game without X-Plane's settings file.
+        do {
+            let folder = entry.steamAppID != nil ? entry.relativePath : (entry.relativePath as NSString).deletingLastPathComponent
+            let root = LibraryModel.drive.appendingPathComponent(folder, isDirectory: true)
+            let own = (entry.gameConfigText ?? "") + "\n" + GameProfile(windowsPath: entry.windowsPath).text
+            let wanted = XPlaneGraphics.wanted(settings: own)
+            let kept = root.appendingPathComponent(XPlaneGraphics.settingsRelative + XPlaneGraphics.originalSuffix).path
+            if wanted || FileManager.default.fileExists(atPath: kept), let line = XPlaneGraphics.prepare(folder: root, wanted: wanted) {
+                LogStore.shared.log(line)
+            }
+        }
         // A Steam game starts through Madeira Dock with its own launch profile (SteamGames.swift),
         // unless its Game details page chose "The game": then its own program starts below, like
         // any library game (SteamDirectStart).
@@ -1544,6 +1584,11 @@ struct ContentView: View {
             })
             return
         }
+        // madeira-bcd (branch steam-client, 2026-11-21, milestone M1): Steam for Windows (Valve's own steam.exe in the Wine desktop; experimental,
+        // off unless Settings › BCD Dock › Steam for Windows turns it on; BCDSteamDesktopLive.swift). Its start first waits for BCD's own Steam
+        // connection to log off (it stays off until the session has ended) and writes the registry values, then comes back here once. Last
+        // before the launch is set up, so nothing after it can stop the start and leave the account held. Any other entry goes straight on.
+        guard BCDSteamDesktopLive.preLaunch(&entry, retry: { startLibraryEntry($0) }) else { return }
         entry.configureLaunch()
         if nwjs64 == .run { BCDNWJS64Launch.export(entry) } else { BCDNWJS64Launch.disarm() }
         if BCDEpic.enabled { BCDEpic.shared.applyLaunch(entry) }   // madeira-bcd (2026-10-22): an Epic game's signed-in start goes through BCD Host (BCDEpicStart.swift)
@@ -1677,6 +1722,9 @@ struct ContentView: View {
         let paradoxLauncherSession = MadeiraDock.paradoxLauncherSession   // night round 2026-11-11 (D S2): read here, on the main thread
         let eaInstallLines = DockInstallers.eaInstallSession ? BCDLauncherSpec.eaInstallerSessionLines : []   // round 630 (A1 S12): read here, on the main thread
         let windowsDesktopEntry = profile?.desktop == true   // madeira-bcd (2026-10-23): the library's "Windows desktop" entry (no game), for the msiexec line below
+        // madeira-bcd (branch steam-client, 2026-11-21, M1): this launch is a Steam for Windows session (the entry's program is Valve's own
+        // steam.exe in its own folder). False for every other launch, a Dock start included, and then nothing below differs.
+        let steamDesktopSession = profile.map(BCDSteamDesktopLive.isSession) ?? false
         // Link external drives before the server lists dosdevices (Madeira #464 does it in startWineserver; here it runs on the main
         // thread, where ExternalDrives and the Steam models it refreshes live, before the sequence below starts the server).
         ExternalDrives.shared.mountAll()
@@ -1694,6 +1742,10 @@ struct ContentView: View {
                 // writes those). Either one turns a switch on.
                 Self.reassertBCDSwitches(profile)
                 logStore.log("[launch-route] library profile applied")
+                // madeira-bcd (branch steam-client, M1): a Steam for Windows session reads BCD's settings for it (SteamDesktopProfile: the
+                // JIT pool, the swap file, the memory Steam's web helper is told, its Chromium's address slots), with the entry's own lines
+                // after them, from a file of this session's own. Before the pool request below, which reads three of them.
+                if steamDesktopSession { for line in BCDSteamDesktopLive.applySessionSettings() { logStore.log(line) } }
                 // madeira-bcd: a Dock session of one-time installs runs without the game's
                 // address-space holds, which leave its 32-bit setups no room.
                 let installSession = DockInstallers.applyInstallSessionConfig(extra: eaInstallLines)
@@ -1813,6 +1865,14 @@ struct ContentView: View {
             } else {
                 unsetenv("MADEIRA_DOCK_SESSION")
             }
+            // madeira-bcd (branch steam-client, M1): a Steam for Windows session publishes no fixed Steam game identity either
+            // (WineProcessBridge.m): Valve's client gives each game it starts that game's own. Never together with a Dock start; every
+            // other launch clears the flag and is unchanged.
+            if steamDesktopSession && !dockLaunch.dock {
+                setenv(SteamDesktop.sessionVariable, "1", 1)
+            } else {
+                unsetenv(SteamDesktop.sessionVariable)
+            }
             // madeira-bcd (2026-10-22): an Epic game's session gets msiexec in the 64-bit system32 (WineProcessBridge.m):
             // Paradox's launcher stub (Cities: Skylines on Epic, dowser.exe) installs its launcher by running "msiexec"
             // from PATH, and only the 32-bit msiexec is bundled ("executable file not found in %PATH%", build 585).
@@ -1870,7 +1930,10 @@ struct ContentView: View {
             // Off, the game's file has no say, as before.
             let poolAbove = ["1", "on", "true", "yes"].contains((MadeiraConfig.gameValue("pool-above-window") ?? MadeiraConfig.get("pool-above-window") ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
-            let gamePool = poolAbove ? MadeiraConfig.gameValue("pool") : nil
+            // madeira-bcd (branch steam-client, M1): in a Steam for Windows session the pool line of the session's own file counts by
+            // itself (BCD's 1152, or the entry's own line): the session needs the largest pool, and pool-above-window's other half, the
+            // placement of a pair above the window, stays at its default.
+            let gamePool = (poolAbove || steamDesktopSession) ? MadeiraConfig.gameValue("pool") : nil
             if let txt = gamePool ?? MadeiraConfig.get("pool"),
                let mb = Int(txt.trimmingCharacters(in: .whitespacesAndNewlines)),
                mb >= 256, mb <= 1152 {
@@ -2294,6 +2357,8 @@ struct ContentView: View {
                 // ml1330: the pool is allocated once per app run and reused, so this is
                 // the actual size, which the unix side records if a session runs it dry.
                 setenv("MADEIRA_POOL_MB", String(pool.size / 1024 / 1024), 1)
+                // madeira-bcd (branch steam-client, M1): what a Steam for Windows session asked for and got, in one line.
+                if steamDesktopSession { logStore.log(BCDSteamDesktopLive.poolLine(askedMB: poolSizeMB, gotMB: pool.size >> 20)) }
             } else {
                 // ml596: ABORT. "Continuing without it" produced ml595 — a run that
                 // looked like an ARM64EC/optimizer regression but was only Wine
@@ -2573,7 +2638,7 @@ struct ContentView: View {
                 }
                 try MadeiraDock.writeHandoff(account: signIn.accountName, token: signIn.refreshToken, appID: game.id)
             } catch { fail(error); return }
-            MadeiraDock.configure(game, launchOption: launchOption)
+            MadeiraDock.configure(game, launchOption: launchOption, arguments: profile?.arguments ?? "")
             // The game's one-time installs (its Steam install script) run first, in the same
             // session. No session runs yet, so the registry files can be read and written.
             // madeira-bcd: they run in a session of their own (DockInstallers.installsOnly), and
@@ -2914,13 +2979,23 @@ final class TouchControlsModel: ObservableObject {
     @Published var editing = false {            // transient, never persisted
         didSet {
             // ml1970: an ended edit is written back to the custom layout it came from.
-            if !oldValue && editing { editBaseline = controls }
+            if !oldValue && editing {
+                editBaseline = controls
+                selectedIDs = []; alignmentX = nil; alignmentY = nil
+            }
+            if oldValue && !editing {
+                selectedIDs = []; alignmentX = nil; alignmentY = nil
+            }
             if oldValue && !editing { ControlPresetsModel.shared.editingEnded(baseline: editBaseline) }
         }
     }
     /// The Session panel card is open on this window: it takes every touch.
     @Published var sessionPanel = false         // transient
     @Published var selected: UUID?              // transient
+    /// Editor-only marquee selection; never persisted in control profiles.
+    @Published var selectedIDs: Set<UUID> = []   // transient
+    @Published var alignmentX: CGFloat?          // transient guide, not stored
+    @Published var alignmentY: CGFloat?          // transient guide, not stored
     /// ml1970: the named layout (TouchControlPresets.swift) these controls were
     /// loaded from; nil for controls no layout holds.
     @Published var layoutID: String?            { didSet { save() } }
@@ -3129,6 +3204,7 @@ struct TouchControlsOverlay: View {
     @ObservedObject private var feel = BCDTouchFeelModel.shared   // madeira-bcd (round 604): the controls hide when no finger has been on them for the time the player chose
     @ObservedObject private var fold = FoldTabletop.shared
     @State private var pinchBase: Double?
+    @State private var groupPinchBases: [UUID: Double] = [:]
 
     var body: some View {
         GeometryReader { geo in
@@ -3140,6 +3216,10 @@ struct TouchControlsOverlay: View {
             let landscape = geo.size.width > geo.size.height || session
             ZStack(alignment: .top) {
                 if landscape && !library.desktopHome && (!BCDDuoFeatures.active || session) {
+                    // madeira-bcd (2026-11-20): iPhone Duo's touchpad below the fold, drawn under the controls (BCDTabletopTouchpad)
+                    if let pad = fold.bottom, !m.editing, !library.blocksGameplayTouch, BCDTabletopTouchpad.on {
+                        BCDTabletopTouchpadSurface(area: pad, screen: geo.size)
+                    }
                     if (m.visible || m.editing) && !library.blocksGameplayTouch {
                         if !feel.hidden {   // madeira-bcd (round 604): hidden for want of a touch, the controls have no view at all
                             controls(geo.size, session: session)
@@ -3217,16 +3297,29 @@ struct TouchControlsOverlay: View {
     /// BCD (2026-10-18): BCD's bar and editor (BCDTouchLive.swift).
     private var topBar: some View { BCDTouchChromeLive() }
 
-    /// Pinch anywhere scales the SELECTED control. With nothing selected it does
-    /// nothing rather than guessing which one you meant.
+    /// Pinch anywhere to scale the selected control or selected group.
     private var scalePinch: some Gesture {
         MagnificationGesture()
             .onChanged { v in
+                if m.editing && m.selectedIDs.count > 1 {
+                    if groupPinchBases.isEmpty {
+                        groupPinchBases = Dictionary(uniqueKeysWithValues: m.controls
+                            .filter { m.selectedIDs.contains($0.id) && $0.locked != true }
+                            .map { ($0.id, $0.scale) })
+                    }
+                    var updated = m.controls
+                    for i in updated.indices {
+                        guard let base = groupPinchBases[updated[i].id] else { continue }
+                        updated[i].scale = BCDTouchGeometry.clampScale(base * Double(v))
+                    }
+                    if updated != m.controls { m.controls = updated }
+                    return
+                }
                 guard m.editing, let i = m.index(of: m.selected), m.controls[i].locked != true else { return }
                 if pinchBase == nil { pinchBase = m.controls[i].scale }
                 m.controls[i].scale = min(max((pinchBase ?? 1) * Double(v), 0.5), 3.0)
             }
-            .onEnded { _ in pinchBase = nil }
+            .onEnded { _ in pinchBase = nil; groupPinchBases = [:] }
     }
 }
 

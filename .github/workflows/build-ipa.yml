@@ -2669,6 +2669,16 @@ jobs:
           python3 tools/patch-wine-vulkan-frame-ring.py
           grep -q "madeira-bcd frame ring (Vulkan)" wine/dlls/win32u/vulkan.c
 
+      # madeira-bcd personal (2026-11-18, the owner's call): check-vt-interp's harness paces its frames with usleep, and on this runner
+      # usleep(12 ms) woke 40-72 ms late (at a load of 18, with Spotlight off at a load of 2, and under taskpolicy -l 0 -t 0) while
+      # kern.timer.coalescing_enabled was 1. With coalescing off for the whole throwaway machine it woke about 3 ms late and every
+      # phase passed on the first try (run 44291172974; measured with a probe script removed since). No check changes here.
+      # (2026-11-23, upstream 0.1.712) Moved up from before check-vt-interp: check-vk-fps-cap times mach_wait_until on the runner too,
+      # and with coalescing on its 60 / 40 / 30 FPS frames came out 16-25 ms long (run 45147495659). The setting holds for the rest of the job.
+      - name: Turn off the runner's timer coalescing
+        if: github.repository == 'Taala2/bcd-personal'
+        run: sudo sysctl -w kern.timer.coalescing_enabled=0 || echo "::warning::kern.timer.coalescing_enabled not set"
+
       # madeira-bcd (2026-11-22, build 703; X-Plane 12 drew its menu at the screen's 120 with the limit at 60): the app's frame-rate limit (60 / 40 /
       # 30 FPS, the vsync mode) holds a Windows Vulkan game's presents too, in win32u before the host's present (build/win32u-unix/vulkan_ios.c,
       # madeira_vk_fps_cap_pace); MADEIRA_VK_FPS_CAP=0 turns it off. The check runs first: the patch in every order with the other three that change
@@ -3868,13 +3878,6 @@ jobs:
       # VideoToolbox make the pictures between two frames and presents them. madeira_vti_probe (Settings > Graphics > Experimental)
       # finds out on a device which sizes it takes and how long a pair takes. Without the variable both hooks return at their first
       # test (tests/host/check-vt-interp.py). After the pacing patch (it builds on present-fx). Native only.
-      # madeira-bcd personal (2026-11-18, the owner's call): the harness paces its frames with usleep, and on this runner
-      # usleep(12 ms) woke 40-72 ms late (at a load of 18, with Spotlight off at a load of 2, and under taskpolicy -l 0 -t 0) while
-      # kern.timer.coalescing_enabled was 1. With coalescing off for the whole throwaway machine it woke about 3 ms late and every
-      # phase passed on the first try (run 44291172974; measured with a probe script removed since). No check changes here.
-      - name: Turn off the runner's timer coalescing
-        if: github.repository == 'Taala2/bcd-personal'
-        run: sudo sysctl -w kern.timer.coalescing_enabled=0 || echo "::warning::kern.timer.coalescing_enabled not set"
       - name: Check the VideoToolbox frame interpolation experiment
         run: python3 tests/host/check-vt-interp.py
 

@@ -73,11 +73,16 @@ i_export = body.find('if nwjs64 == .run { BCDNWJS64Launch.export(entry) }')
 check('startLibraryEntry asks the plan before configureLaunch', 0 <= i_plan < i_configure, f'{i_plan} {i_configure}')
 check('the command is exported right after configureLaunch',
       i_export > i_configure and body[i_configure:i_export].count('\n') == 1)
-download = body[i_plan:i_configure]
+# madeira-bcd personal (2026-11-23, upstream 0.1.712): upstream's Steam for Windows guard stays last before configureLaunch, so the
+# NW.js block comes before it and ends where the guard's comment starts.
+i_steam = body.find('guard BCDSteamDesktopLive.preLaunch(')
+check('upstream\'s Steam for Windows guard, when present, comes after the NW.js block and before configureLaunch',
+      i_steam < 0 or i_plan < i_steam < i_configure, f'{i_plan} {i_steam} {i_configure}')
+download = body[i_plan:i_steam if i_steam > i_plan else i_configure]
 check('.download: a message, the download, then the same start again',
       'if nwjs64 == .download {' in download and 'library.error = BCDNWJS64Launch.waitMessage(received: 0)' in download
       and 'BCDNWJS64Installer.shared.start(progress: { received in' in download and 'startLibraryEntry(pending)' in download
-      and re.search(r'\n            return\n        \}\n\s*$', download) is not None)
+      and re.search(r'\n            return\n        \}\n(?:[ \t]*//[^\n]*\n)*\s*$', download) is not None)
 check('the message follows the download (percent and megabytes, then unpacking), only while it is the one it put up',
       'library.error = BCDNWJS64Launch.waitMessage(received: received)' in download
       and 'if library.error?.hasPrefix(BCDNWJS64Launch.waitPrefix) == true {' in download

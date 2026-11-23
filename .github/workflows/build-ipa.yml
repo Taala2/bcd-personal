@@ -296,6 +296,8 @@ jobs:
       # Settings › Feedback › Attach my last game's log (round 707, A2 F15).
       - name: Check the feedback log attachment
         run: python3 tests/host/check-feedback-attach.py --require-swift
+        # Not in Taala2/bcd-personal: reads bcd-logs/worker/*, which tools/export-public.py keeps out of the public tree.
+        if: github.repository != 'Taala2/bcd-personal'
 
       # End the game now (round 707, G1 S15): 45 s after a Close that did nothing.
       - name: Check End the game now

@@ -51,7 +51,9 @@ if sys.platform == "darwin" and shutil.which("xcrun"):
                             "-o", str(Path(t, "p.o"))], capture_output=True, text=True)
         Path(t, "p.err").write_text(c.stderr)
         r = subprocess.run([sys.executable, str(R / "tools/check-availability-warnings.py"), "--min", "18.0", t], capture_output=True, text=True)
-        if "pipe2" not in c.stderr:
+        # madeira-bcd personal (2026-11-23, upstream 0.1.712): an SDK before iOS 27 does not declare pipe2 at all, so clang's error
+        # ("call to undeclared function 'pipe2'") names it too. Skip on the missing availability warning, not on the missing name.
+        if "'pipe2' is only available on iOS" not in c.stderr:
             print("skip this SDK does not mark pipe2 as newer than iOS 17 (an SDK before iOS 27)")
         else:
             check("a real clang run: pipe2 for an iOS 17 target warns, and the script fails on it", r.returncode == 1 and "pipe2" in r.stdout,

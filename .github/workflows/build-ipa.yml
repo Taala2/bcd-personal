@@ -514,6 +514,11 @@ jobs:
       - name: Check the live texture census of d3d11-src.dll
         run: python3 tests/host/check-dxmt-tex-census.py
 
+      # madeira-bcd personal (2026-11-24, CelSector): MADEIRA_RGBA_HALF=1 in d3d11-src.dll creates single-level RGBA8 textures with
+      # a side over 2,048 px at half size and downscales staging copies and initial data into them ([rgba-half]).
+      - name: Check large RGBA8 textures at half size in d3d11-src.dll
+        run: python3 tests/host/check-dxmt-rgba-half.py
+
       # madeira-bcd (2026-11-15, owner's decision): the 64-bit DXMT set built from BCD's pin (d3d11-src, dxgi-src, d3d10core-src,
       # winemetal-src and the internal shaders compiled from the pin), chosen only by env.MADEIRA_DXMT_FRESH = 1; with the key off
       # the committed DLLs are what every game runs, byte for byte.

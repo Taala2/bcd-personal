@@ -146,6 +146,9 @@ done
 #   tools/patch-dxmt-bc-half.py               value 2 of MADEIRA_MIP_CLAMP_AUTO / d3d11.mipClampAuto (round 677, G3 S1: Shroom and Gloom,
 #                                             Schedule I, Nunholy): the auto clamp from 256 px, and single-level BC textures at half size on a
 #                                             GPU without BC, within d3d11.mipClampAutoMB of the limit ([bc-half]; values 0, 1 and unset unchanged)
+#   tools/patch-d3d11-src-rgba-half.py        madeira-bcd personal (2026-11-24, CelSector): MADEIRA_RGBA_HALF=1 creates single-level
+#                                             RGBA8/BGRA8 textures with a side over 2,048 px at half size, downscaling staging copies and
+#                                             initial data on the CPU ([rgba-half]; off unless exactly "1"). After bc-half: it uses scaleShift.
 #   tools/patch-d3d11-src-tex-census.py       madeira-bcd personal (2026-11-24, CelSector): read-only, the live private texture memory by
 #                                             kind, side and Metal format after every [mem-census] report ([tex-census])
 #   tools/patch-d3d11-src-all-arch.py         the 25 `#if defined(__i386__)` gates of dxmt 1b4f3dc opened: short constant buffers read 0 past
@@ -168,6 +171,7 @@ BCD_PATCHES=("patch-dxmt-copy-structure-count.py" "[copy-structure-count] skippe
              "patch-dxmt-wsi-tiny-fullscreen.py" "[wsi-fullscreen] a fullscreen swapchain"
              "patch-dxmt-d3d11-fault-info.py" "[fault-enc] madeira-bcd frame "
              "patch-dxmt-bc-half.py" "[bc-half] madeira-bcd "
+             "patch-d3d11-src-rgba-half.py" "[rgba-half] madeira-bcd #"
              "patch-d3d11-src-tex-census.py" "[tex-census] madeira-bcd live by kind: "
              "patch-d3d11-src-all-arch.py" "[cb-short] madeira-bcd #")
 SHIP_HAS_BCD=1

@@ -13,8 +13,9 @@ Checks:
      (it uses Texture::scaleShift) and before patch-d3d11-src-all-arch.py; the build script describes it; CI runs this check; the
      name stays outside the i386 farm's cache key;
   2. the header the script writes, compiled on the host: only "1" turns it on, the eight 4-byte formats and nothing next to them,
-     the size rule at its edges (a side over 2,048 px, both sides even, one level, one slice), the copy region rule (even origin
-     and size, inside the level, no overflow), the 2x2 box with rounding and a padded source pitch, the log rate;
+     the half side rounded up, the candidate rule (a side over 2,048 px) and each reject reason (an odd side only with initial
+     data), the copy region rule (even origin, even size or an odd one ending at the edge, inside the level, no overflow), the
+     2x2 box with rounding, a padded source pitch and odd sides, the log rate;
   3. on a copy of the pinned dxmt/src (DXMT_SRC_DIR or the submodule; SKIP without one) with patch-dxmt-bc-half.py applied: the
      script applies, a second run says "already patched", a tree without bc-half is refused, a tree with one file patched is
      refused, a moved anchor fails by name; in the result the size decision follows bc-half's and comes before the physical
@@ -79,11 +80,35 @@ int main() {
   for (unsigned f : yes) T(Format(f));
   const unsigned no[] = {0, 2, 10, 24, 26, 30, 31, 32, 71, 77, 86, 89, 94, 98, 99, 115};
   for (unsigned f : no) T(!Format(f));
-  T(Eligible(4096, 4096, 1, 1)); T(Eligible(4096, 2048, 1, 1)); T(Eligible(2, 2050, 1, 1)); T(Eligible(2050, 2, 1, 1));
-  T(!Eligible(2048, 2048, 1, 1)); T(!Eligible(1920, 1080, 1, 1));
-  T(!Eligible(4096, 4095, 1, 1)); T(!Eligible(4097, 4096, 1, 1));
-  T(!Eligible(4096, 4096, 2, 1)); T(!Eligible(4096, 4096, 0, 1)); T(!Eligible(4096, 4096, 1, 2)); T(!Eligible(4096, 0, 1, 1));
+  T(HalfSide(4096) == 2048); T(HalfSide(4095) == 2048); T(HalfSide(4093) == 2047); T(HalfSide(2) == 1);
+  T(HalfSide(1) == 1); T(HalfSide(0) == 0); T(HalfSide(0xFFFFFFFFu) == 0x80000000u);
+  T(Candidate(28, 4096, 4096)); T(Candidate(28, 2049, 2)); T(Candidate(87, 2, 4095)); T(Candidate(91, 4093, 4091));
+  T(!Candidate(28, 2048, 2048)); T(!Candidate(28, 1920, 1080)); T(!Candidate(2, 4096, 4096)); T(!Candidate(71, 4096, 4096));
+  const Desc base = {4096, 4096, 1, 1, kUsageDefault, kBindShaderResource, 0, 0, 1, false};
+  T(RejectReason(base) == nullptr);
+  auto with = [&](auto edit) { Desc d = base; edit(d); return RejectReason(d); };
+  auto is = [](const char *got, const char *want) { return got && std::strcmp(got, want) == 0; };
+  T(!with([](Desc &d) { d.usage = kUsageImmutable; }));
+  T(!with([](Desc &d) { d.sample_count = 0; }));
+  T(!with([](Desc &d) { d.initial_data = true; }));
+  T(!with([](Desc &d) { d.width = 4093; d.height = 4091; }));
+  T(!with([](Desc &d) { d.width = 4084; d.height = 4091; }));
+  T(is(with([](Desc &d) { d.width = 4093; d.initial_data = true; }), "an odd side with initial data"));
+  T(is(with([](Desc &d) { d.height = 4091; d.initial_data = true; }), "an odd side with initial data"));
+  T(is(with([](Desc &d) { d.mip_levels = 2; }), "more than one level"));
+  T(is(with([](Desc &d) { d.mip_levels = 0; }), "more than one level"));
+  T(is(with([](Desc &d) { d.array_size = 2; }), "an array"));
+  T(is(with([](Desc &d) { d.sample_count = 4; }), "multisampled"));
+  T(is(with([](Desc &d) { d.usage = 2; }), "usage is not DEFAULT or IMMUTABLE"));
+  T(is(with([](Desc &d) { d.usage = 3; }), "usage is not DEFAULT or IMMUTABLE"));
+  T(is(with([](Desc &d) { d.bind_flags = kBindShaderResource | 0x20; }), "bound as more than a shader resource"));
+  T(is(with([](Desc &d) { d.bind_flags = 0; }), "bound as more than a shader resource"));
+  T(is(with([](Desc &d) { d.cpu_access = 0x10000; }), "CPU access"));
+  T(is(with([](Desc &d) { d.misc_flags = 0x4; }), "misc flags"));
+  T(is(with([](Desc &d) { d.height = 1; }), "a side under 2 px"));
   T(RegionOk(0, 0, 4096, 4096, 4096, 4096)); T(RegionOk(2, 4, 4094, 4092, 4096, 4096)); T(RegionOk(4094, 4094, 2, 2, 4096, 4096));
+  T(RegionOk(0, 0, 4093, 4091, 4093, 4091)); T(RegionOk(2, 0, 4091, 2, 4093, 4096)); T(RegionOk(4092, 4090, 1, 1, 4093, 4091));
+  T(!RegionOk(0, 0, 4091, 2, 4093, 4096)); T(!RegionOk(1, 0, 4092, 2, 4093, 4096)); T(!RegionOk(0, 0, 4094, 2, 4093, 4096));
   T(!RegionOk(1, 0, 2, 2, 4096, 4096)); T(!RegionOk(0, 3, 2, 2, 4096, 4096));
   T(!RegionOk(0, 0, 4095, 4096, 4096, 4096)); T(!RegionOk(0, 0, 4096, 1, 4096, 4096));
   T(!RegionOk(0, 0, 0, 2, 4096, 4096)); T(!RegionOk(0, 0, 2, 0, 4096, 4096));
@@ -108,9 +133,26 @@ int main() {
   bool all255 = true;
   for (unsigned char c : h) all255 = all255 && c == 255;
   T(all255);
+  /* 3x3 texels (every channel the same value), a 16-byte pitch with 0xEE padding, and nothing after the last texel: the odd
+   * column and row are averaged with themselves. Expected (0+4+12+16+2)>>2=8, (8+8+20+20+2)>>2=14, (24+28+24+28+2)>>2=26,
+   * (4*32+2)>>2=32. */
+  unsigned char *odd = new unsigned char[16 * 2 + 12];
+  std::memset(odd, 0xEE, 16 * 2 + 12);
+  const unsigned char v[3][3] = {{0, 4, 8}, {12, 16, 20}, {24, 28, 32}};
+  for (int y = 0; y < 3; y++)
+    for (int x = 0; x < 3; x++)
+      std::memset(odd + y * 16 + x * 4, v[y][x], 4);
+  unsigned char o[16];
+  std::memset(o, 0x55, sizeof o);
+  Downscale2x2(odd, 16, 3, 3, o);
+  const unsigned char want_odd[4] = {8, 14, 26, 32};
+  bool odd_ok = true;
+  for (int i = 0; i < 16; i++) odd_ok = odd_ok && o[i] == want_odd[i / 4];
+  T(odd_ok);
+  delete[] odd;
   T(ShouldLog(1)); T(ShouldLog(8)); T(!ShouldLog(9)); T(!ShouldLog(63)); T(ShouldLog(64)); T(!ShouldLog(65)); T(ShouldLog(128));
   T(kMinLargestSide == 2049);
-  T(g_created.load() == 0 && g_copied.load() == 0 && g_dropped.load() == 0);
+  T(g_created.load() == 0 && g_copied.load() == 0 && g_dropped.load() == 0 && g_rejected.load() == 0);
   if (!bad) std::printf("host test passed\n");
   return bad;
 }
@@ -128,7 +170,8 @@ else:
         check("the header compiles on the host with -Wall -Wextra -Werror", b.returncode == 0, b.stdout + b.stderr)
         if b.returncode == 0:
             r = subprocess.run([exe], capture_output=True, text=True)
-            check("only \"1\" on, the eight formats, the size and region rules at their edges, the 2x2 box, the log rate",
+            check("only \"1\" on, the eight formats, the half side, the candidate rule and each reject reason, the region rule "
+                  "at its edges, the 2x2 box with odd sides, the log rate",
                   r.returncode == 0 and "host test passed" in r.stdout, r.stdout + r.stderr)
 
 dsrc = pathlib.Path(os.environ.get("DXMT_SRC_DIR", R / "dxmt")) / "src"
@@ -166,6 +209,14 @@ else:
               < dev.index("texture->setScaleShift(scale_shift);"))
         check("  it reads MADEIRA_RGBA_HALF once, through rgba_half::EnabledValue",
               dev.count('env::getEnvVar("MADEIRA_RGBA_HALF")') == 1 and "rgba_half::EnabledValue(" in dev)
+        blk = dev[dec:dev.index("    if (mip_bias) {\n      physDesc.Width")]
+        check("  a candidate goes through rgba_half::RejectReason; a rejected one is logged with the reason, a taken one gets "
+              "the half side rounded up",
+              "rgba_half::Candidate((uint32_t)finalDesc.Format, finalDesc.Width, finalDesc.Height)" in blk
+              and "if (const char *why = rgba_half::RejectReason(half_desc)) {" in blk
+              and 'ERR("[rgba-half] madeira-bcd: not halved #", n,' in blk and ", why);" in blk
+              and "physDesc.Width  = rgba_half::HalfSide(finalDesc.Width);" in blk
+              and "physDesc.Height = rgba_half::HalfSide(finalDesc.Height);" in blk and ">> 1" not in blk)
         cp = ctx.index("  CopyTexture(TextureCopyCommand &&cmd) {")
         body = ctx[cp:]
         call = body.index("    if (RgbaHalfCopy(cmd))")
@@ -174,6 +225,10 @@ else:
               < body.index("ml746: TRANSLATE MIP INDICES"))
         check("  RgbaHalfCopy is defined once, before CopyTexture",
               ctx.count("RgbaHalfCopy(TextureCopyCommand &cmd) {") == 1 and ctx.index("RgbaHalfCopy(TextureCopyCommand &cmd) {") < cp)
+        rh = ctx[ctx.index("RgbaHalfCopy(TextureCopyCommand &cmd) {"):cp]
+        check("  its upload size is the half side rounded up",
+              "dst_w = rgba_half::HalfSide(src_w), dst_h = rgba_half::HalfSide(src_h);" in rh
+              and "const WMTSize size = {(uint64_t)dst_w, (uint64_t)dst_h, 1};" in rh and "src_w >> 1" not in rh)
         check("initial data is downscaled before bc-half's upload guard",
               ini.index("rgba_half::Downscale2x2((const uint8_t *)data, row_pitch, width_sub * 2, height_sub * 2,")
               < ini.index("upload of a half-size texture skipped"))
